@@ -12,7 +12,12 @@ export default defineConfig({
                     build: {
                         outDir: 'dist-electron',
                         rollupOptions: {
-                            external: ['electron']
+                            external: ['electron'],
+                            output: {
+                                format: 'cjs',
+                                entryFileNames: 'main.js',
+                                inlineDynamicImports: true
+                            }
                         }
                     }
                 }
@@ -23,7 +28,12 @@ export default defineConfig({
                     build: {
                         outDir: 'dist-electron',
                         rollupOptions: {
-                            external: ['electron']
+                            external: ['electron'],
+                            output: {
+                                format: 'cjs',
+                                entryFileNames: 'preload.js',
+                                inlineDynamicImports: true
+                            }
                         }
                     }
                 }
@@ -32,7 +42,7 @@ export default defineConfig({
     ],
     server: {
         port: 3000,
-        strictPort: true
+        strictPort: false
     },
     base: './'
 })

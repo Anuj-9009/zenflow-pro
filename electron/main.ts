@@ -1,23 +1,28 @@
 // Electron Main Process - with Real Media Integration
 import { app, BrowserWindow, ipcMain } from 'electron'
+import type { BrowserWindow as BrowserWindowType } from 'electron'
 import path from 'path'
-import { fileURLToPath } from 'url'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { fileURLToPath } from 'url'
+import { setupMediaControl } from './media-control'
 
-const execAsync = promisify(exec)
+// FIX: Disable GPU Acceleration to prevent renderer crashes
+// app.disableHardwareAcceleration()
 
+// ESM compatibility - define __dirname
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-let mainWindow: BrowserWindow | null = null
+const execAsync = promisify(exec)
+
+let mainWindow: BrowserWindowType | null = null
 
 // Run AppleScript and return result
 async function runAppleScript(script: string): Promise<string> {
   try {
-    // Write script to temp file to avoid escaping issues
     const tempScript = script.replace(/"/g, '\\"')
-    const { stdout } = await execAsync(`osascript -e "${tempScript}"`)
+    const { stdout } = await execAsync(`osascript - e "${tempScript}"`)
     console.log('AppleScript result:', stdout.trim())
     return stdout.trim()
   } catch (err) {
@@ -29,7 +34,6 @@ async function runAppleScript(script: string): Promise<string> {
 // Get metadata from Spotify or Apple Music
 async function getMediaMetadata() {
   try {
-    // Check if Spotify is running first
     const spotifyCheck = await execAsync('osascript -e \'application "Spotify" is running\'')
     const spotifyRunning = spotifyCheck.stdout.trim() === 'true'
 
@@ -47,12 +51,11 @@ async function getMediaMetadata() {
         const artist = artistResult.stdout.trim()
         const album = albumResult.stdout.trim()
         const artUrl = artResult.stdout.trim()
-        const duration = parseFloat(durationResult.stdout.trim()) / 1000 // ms to seconds
+        const duration = parseFloat(durationResult.stdout.trim()) / 1000
         const position = parseFloat(positionResult.stdout.trim())
         const isPlaying = stateResult.stdout.trim() === 'playing'
 
         console.log('Spotify metadata:', { name, artist, album, artUrl, duration, position, isPlaying })
-
         return { name, artist, album, artUrl, duration, position, isPlaying }
       } catch (err) {
         console.error('Error getting Spotify metadata:', err)
@@ -60,7 +63,6 @@ async function getMediaMetadata() {
       }
     }
 
-    // Check Apple Music
     const musicCheck = await execAsync('osascript -e \'application "Music" is running\'')
     const musicRunning = musicCheck.stdout.trim() === 'true'
 
@@ -77,7 +79,7 @@ async function getMediaMetadata() {
           name: nameResult.stdout.trim(),
           artist: artistResult.stdout.trim(),
           album: albumResult.stdout.trim(),
-          artUrl: null, // Apple Music doesn't easily expose artwork URL
+          artUrl: null,
           duration: parseFloat(durationResult.stdout.trim()),
           position: parseFloat(positionResult.stdout.trim()),
           isPlaying: stateResult.stdout.trim() === 'playing'
@@ -95,7 +97,6 @@ async function getMediaMetadata() {
   }
 }
 
-// Media control functions
 async function mediaPlayPause() {
   try {
     await execAsync('osascript -e \'tell application "Spotify" to playpause\'')
@@ -132,6 +133,30 @@ async function mediaPrevious() {
   }
 }
 
+// NOTE: Spotify AppleScript doesn't support fetching library/history directly.
+// We will implement a local history in the renderer or just handle basic 'current context'.
+// However, Apple Music DOES support getting playlists.
+async function getPlaylists() {
+  try {
+    const script = `
+            tell application "Music"
+                set output to ""
+                repeat with p in user playlists
+                    set output to output & name of p & "|||" & id of p & ":::"
+                end repeat
+return output
+            end tell
+        `
+    const { stdout } = await execAsync(`osascript - e '${script}'`)
+    return stdout.split(':::').filter(Boolean).map(s => {
+      const [name, id] = s.split('|||')
+      return { name, id: id, art: null }
+    })
+  } catch (e) {
+    return []
+  }
+}
+
 async function volumeUp() {
   try {
     await execAsync('osascript -e \'set volume output volume ((output volume of (get volume settings)) + 10)\'')
@@ -150,13 +175,34 @@ async function volumeDown() {
   }
 }
 
+async function setVolume(level: number) {
+  try {
+    // Clamp between 0 and 100
+    const vol = Math.max(0, Math.min(100, level))
+    await execAsync(`osascript - e 'set volume output volume ${vol}'`)
+    console.log('Volume set to:', vol)
+  } catch (err) {
+    console.error('Set volume error:', err)
+  }
+}
+
+async function getVolume(): Promise<number> {
+  try {
+    const { stdout } = await execAsync('osascript -e \'output volume of (get volume settings)\'')
+    return parseInt(stdout.trim()) || 50
+  } catch (err) {
+    console.error('Get volume error:', err)
+    return 50
+  }
+}
+
 async function seekTo(position: number) {
   try {
-    await execAsync(`osascript -e 'tell application "Spotify" to set player position to ${position}'`)
+    await execAsync(`osascript - e 'tell application "Spotify" to set player position to ${position}'`)
     console.log('Seek to:', position)
   } catch {
     try {
-      await execAsync(`osascript -e 'tell application "Music" to set player position to ${position}'`)
+      await execAsync(`osascript - e 'tell application "Music" to set player position to ${position}'`)
       console.log('Seek to:', position)
     } catch (err) {
       console.error('Seek error:', err)
@@ -166,36 +212,55 @@ async function seekTo(position: number) {
 
 function createWindow() {
   console.log('Creating window...')
+  console.log('app.isPackaged:', app.isPackaged)
+  console.log('__dirname:', __dirname)
+
+  // FIX: Correct preload path for both dev and production
+  const preloadPath = app.isPackaged
+    ? path.join(__dirname, 'preload.js')
+    : path.join(__dirname, 'preload.js')
+
+  console.log('Preload path:', preloadPath)
 
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    frame: true,
+    frame: false, // Frameless for custom look
+    titleBarStyle: 'hidden', // Native traffic lights overlay
+    trafficLightPosition: { x: 16, y: 16 }, // Padding for traffic lights
     backgroundColor: '#050510',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: false // Prevent background suspension
     }
   })
 
+  setupMediaControl(mainWindow)
+
   if (process.env.VITE_DEV_SERVER_URL) {
-    console.log('Loading dev server:', process.env.VITE_DEV_SERVER_URL)
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
+    mainWindow.webContents.openDevTools()
   } else {
-    const indexPath = path.join(__dirname, '../dist/index.html')
-    console.log('Loading file:', indexPath)
-    mainWindow.loadFile(indexPath)
+    mainWindow.loadFile('dist/index.html')
+    // Force Open DevTools for debugging production build
+    mainWindow.webContents.openDevTools()
   }
 
   mainWindow.on('closed', () => {
     mainWindow = null
   })
 
+  mainWindow.webContents.on('did-fail-load', (_event: any, errorCode: number, errorDescription: string) => {
+    console.error('Failed to load:', errorCode, errorDescription)
+  })
+
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('Window loaded successfully')
+    // Enable DevTools to debug
     mainWindow?.webContents.openDevTools()
   })
 }
@@ -225,8 +290,20 @@ ipcMain.handle('media:volumeDown', async () => {
   await volumeDown()
 })
 
-ipcMain.handle('media:seek', async (_event, position: number) => {
+ipcMain.handle('media:seek', async (_event: any, position: number) => {
   await seekTo(position)
+})
+
+ipcMain.handle('media:setVolume', async (_event: any, level: number) => {
+  await setVolume(level)
+})
+
+ipcMain.handle('media:getVolume', async () => {
+  return await getVolume()
+})
+
+ipcMain.handle('media:getPlaylists', async () => {
+  return await getPlaylists()
 })
 
 app.whenReady().then(() => {

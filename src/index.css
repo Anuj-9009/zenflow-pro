@@ -1,0 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-header: 'Space Grotesk', sans-serif;
+  
+  --color-bg: #050510;
+  --color-glass: rgba(255, 255, 255, 0.05);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+  --blur-amt: 24px;
+  
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Springy */
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--color-bg);
+    color: white;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, .atlas-header {
+    font-family: var(--font-header);
+    letter-spacing: -0.03em;
+    margin: 0;
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(var(--blur-amt));
+    -webkit-backdrop-filter: blur(var(--blur-amt));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Scrollbar Hide */
+::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+}

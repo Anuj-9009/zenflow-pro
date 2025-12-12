@@ -1,6 +1,7 @@
-// Glass Dock - Clean Minimal Controls
-// Just controls, no duplicate track info
+// Glass Dock - Enhanced with Smooth Animations
+// Premium controls with micro-interactions
 
+import { useState } from 'react'
 import { useStore } from '../store/useStore'
 
 const PlayIcon = () => (
@@ -32,6 +33,43 @@ const NextIcon = () => (
 
 export default function GlassDock() {
     const { isPlaying, playPause, next, previous, colors } = useStore()
+    const [hoveredButton, setHoveredButton] = useState<string | null>(null)
+    const [pressedButton, setPressedButton] = useState<string | null>(null)
+
+    const getButtonStyle = (id: string, isMain = false): React.CSSProperties => ({
+        background: isMain
+            ? `linear-gradient(135deg, ${colors.primary}30, ${colors.secondary}30)`
+            : hoveredButton === id
+                ? 'rgba(255, 255, 255, 0.12)'
+                : 'transparent',
+        border: 'none',
+        color: 'white',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: isMain ? 56 : 44,
+        height: isMain ? 56 : 44,
+        borderRadius: '50%',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        outline: 'none',
+        transform: pressedButton === id
+            ? 'scale(0.92)'
+            : hoveredButton === id
+                ? 'scale(1.08)'
+                : 'scale(1)',
+        boxShadow: isMain && isPlaying
+            ? `0 0 24px ${colors.primary}50, inset 0 0 12px ${colors.primary}20`
+            : hoveredButton === id
+                ? `0 4px 16px rgba(0, 0, 0, 0.3)`
+                : 'none'
+    })
+
+    const handleClick = (action: () => void, id: string) => {
+        setPressedButton(id)
+        action()
+        setTimeout(() => setPressedButton(null), 150)
+    }
 
     return (
         <div style={{
@@ -42,54 +80,67 @@ export default function GlassDock() {
             zIndex: 100,
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
-            padding: '12px 20px',
-            borderRadius: 50,
-            background: 'rgba(255, 255, 255, 0.08)',
-            backdropFilter: 'blur(30px)',
-            WebkitBackdropFilter: 'blur(30px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            boxShadow: `0 4px 24px rgba(0,0,0,0.3), 0 0 30px ${colors.primary}10`
+            gap: 12,
+            padding: '14px 24px',
+            borderRadius: 60,
+            background: 'rgba(255, 255, 255, 0.06)',
+            backdropFilter: 'blur(40px)',
+            WebkitBackdropFilter: 'blur(40px)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            boxShadow: `
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                0 0 0 1px rgba(255, 255, 255, 0.05),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1)
+            `,
+            animation: 'dockSlideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
         }}>
             {/* Prev */}
-            <button onClick={previous} style={btnStyle}>
+            <button
+                onClick={() => handleClick(previous, 'prev')}
+                onMouseEnter={() => setHoveredButton('prev')}
+                onMouseLeave={() => setHoveredButton(null)}
+                style={getButtonStyle('prev')}
+            >
                 <PrevIcon />
             </button>
 
             {/* Play/Pause */}
             <button
-                onClick={playPause}
-                style={{
-                    ...btnStyle,
-                    width: 52,
-                    height: 52,
-                    background: `linear-gradient(135deg, ${colors.primary}30, ${colors.secondary}30)`,
-                    boxShadow: isPlaying ? `0 0 20px ${colors.primary}40` : 'none',
-                    transition: 'box-shadow 0.3s ease'
-                }}
+                onClick={() => handleClick(playPause, 'play')}
+                onMouseEnter={() => setHoveredButton('play')}
+                onMouseLeave={() => setHoveredButton(null)}
+                style={getButtonStyle('play', true)}
             >
-                {isPlaying ? <PauseIcon /> : <PlayIcon />}
+                <div style={{
+                    transition: 'transform 0.2s ease',
+                    transform: pressedButton === 'play' ? 'scale(0.9)' : 'scale(1)'
+                }}>
+                    {isPlaying ? <PauseIcon /> : <PlayIcon />}
+                </div>
             </button>
 
             {/* Next */}
-            <button onClick={next} style={btnStyle}>
+            <button
+                onClick={() => handleClick(next, 'next')}
+                onMouseEnter={() => setHoveredButton('next')}
+                onMouseLeave={() => setHoveredButton(null)}
+                style={getButtonStyle('next')}
+            >
                 <NextIcon />
             </button>
+
+            <style>{`
+                @keyframes dockSlideUp {
+                    0% { 
+                        opacity: 0; 
+                        transform: translateX(-50%) translateY(20px); 
+                    }
+                    100% { 
+                        opacity: 1; 
+                        transform: translateX(-50%) translateY(0); 
+                    }
+                }
+            `}</style>
         </div>
     )
-}
-
-const btnStyle: React.CSSProperties = {
-    background: 'transparent',
-    border: 'none',
-    color: 'white',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 40,
-    height: 40,
-    borderRadius: '50%',
-    transition: 'background 0.2s ease',
-    outline: 'none'
 }

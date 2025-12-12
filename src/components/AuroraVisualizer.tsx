@@ -55,7 +55,8 @@ export default function AuroraVisualizer() {
             position: 'fixed',
             inset: 0,
             zIndex: 0,
-            background: '#050510'
+            background: '#050510',
+            pointerEvents: 'none'
         }}>
             <Canvas
                 camera={{ position: [0, 0, 3], fov: 60 }}

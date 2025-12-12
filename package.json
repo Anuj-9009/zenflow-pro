@@ -1,13 +1,12 @@
 {
-  "name": "zenflow",
-  "version": "1.0.0",
-  "description": "Audio Visualizer with Spotify/Apple Music Integration",
-  "author": "ZenFlow",
-  "type": "module",
+  "name": "zenflow-pro",
+  "version": "2.0.0",
+  "description": "Premium Music Visualizer with Immersive Now Playing, AI Visualizer & Lyrics",
+  "author": "ZenFlow Pro",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "npx tsc && npx vite build",
     "preview": "vite preview",
     "package": "npm run build && electron-builder",
     "package:mac": "npm run build && electron-builder --mac",
@@ -20,7 +19,10 @@
     "@react-three/fiber": "^8.15.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "run-applescript": "^7.1.0",
     "three": "^0.158.0",
+    "tone": "^15.1.22",
+    "web-audio-beat-detector": "^8.2.31",
     "zustand": "^4.4.0"
   },
   "devDependencies": {
@@ -35,14 +37,15 @@
     "vite-plugin-electron": "^0.28.0"
   },
   "build": {
-    "appId": "com.zenflow.app",
-    "productName": "ZenFlow",
+    "appId": "com.zenflow.pro",
+    "productName": "ZenFlow Pro",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/preload.js",
+      "electron/main.cjs"
     ],
     "mac": {
       "target": [
