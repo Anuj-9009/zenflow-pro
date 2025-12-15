@@ -1,7 +1,6 @@
-// Desktop Sidebar
-// Glassmorphism, Fixed Position, Draggable Region support
-
+// Sidebar - Clean Version with Search Tab
 import { useStore } from '../store/useStore'
+import UnifiedQueue from './UnifiedQueue'
 
 interface SidebarProps {
     activeTab: string
@@ -13,45 +12,41 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 
     const menuItems = [
         { id: 'library', label: 'Library', icon: '💿' },
-        { id: 'search', label: 'Search', icon: '🔍' },
         { id: 'dj', label: 'Live DJ', icon: '🎛️' },
-        { id: 'slowed', label: 'Slowed + Reverb', icon: '🎹' },
-        { id: 'settings', label: 'Settings', icon: '⚙️' },
+        { id: 'search', label: 'Search', icon: '🔍' },
+        { id: 'gestures', label: 'Gestures', icon: '👋' },
     ]
 
     return (
         <div style={{
-            width: '260px', // Slightly wider for elegance
-            height: '100vh',
-            position: 'fixed',
-            left: 0,
-            top: 0,
-            background: 'rgba(20, 20, 20, 0.3)', // Darker base
-            backdropFilter: 'blur(40px) saturate(120%)', // Deep frost
+            width: '260px',
+            height: '100%',
+            background: 'rgba(20, 20, 20, 0.3)',
+            backdropFilter: 'blur(40px) saturate(120%)',
             borderRight: '1px solid rgba(255,255,255,0.03)',
             display: 'flex',
             flexDirection: 'column',
-            padding: '50px 24px', // More breathing room
+            padding: '50px 24px',
             zIndex: 50,
-            // Allow clicking but top area is draggable in App.tsx
+            flexShrink: 0,
         }}>
             {/* Logo area */}
             <div style={{
-                marginBottom: '60px',
+                marginBottom: '40px',
                 padding: '0 8px',
-                fontSize: '28px', // Larger
-                fontWeight: 500, // Lighter weight for serif
+                fontSize: '28px',
+                fontWeight: 500,
                 color: 'white',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '16px',
-                fontFamily: '"Times New Roman", serif', // Trendy serif
+                fontFamily: '"Times New Roman", serif',
                 letterSpacing: '-0.5px',
                 fontStyle: 'italic'
             }}>
                 <div style={{
                     width: '32px', height: '32px',
-                    borderRadius: '50%', // Circle looks more organic
+                    borderRadius: '50%',
                     background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
                     boxShadow: `0 0 20px ${colors.primary}40`
                 }} />
@@ -59,7 +54,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
             </div>
 
             {/* Menu */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '40px' }}>
                 {menuItems.map(item => {
                     const isActive = activeTab === item.id
                     return (
@@ -69,28 +64,27 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '16px',
-                                padding: '14px 16px',
-                                borderRadius: '16px', // Heavy rounded
+                                gap: '12px',
+                                padding: '12px 16px',
+                                borderRadius: '12px',
                                 cursor: 'pointer',
-                                transition: 'all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)', // Liquid easing
-                                background: isActive ? `rgba(255,255,255,0.06)` : 'transparent',
+                                background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
                                 color: isActive ? 'white' : 'rgba(255,255,255,0.5)',
-                                transform: isActive ? 'translateX(8px)' : 'none', // Drift effect
-                                marginTop: item.id === 'settings' ? 'auto' : undefined // Push settings to bottom? No, just keep list
-                            }}
-                            onMouseEnter={e => {
-                                if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.02)'
-                            }}
-                            onMouseLeave={e => {
-                                if (!isActive) e.currentTarget.style.background = 'transparent'
+                                fontWeight: 600,
+                                transition: 'all 0.2s ease',
+                                transform: isActive ? 'translateX(4px)' : 'none'
                             }}
                         >
-                            <span style={{ fontSize: '20px', opacity: isActive ? 1 : 0.7 }}>{item.icon}</span>
-                            <span style={{ fontSize: '15px', fontWeight: 500, letterSpacing: '0.3px' }}>{item.label}</span>
+                            <span>{item.icon}</span>
+                            {item.label}
                         </div>
                     )
                 })}
+            </div>
+
+            {/* Queue */}
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <UnifiedQueue />
             </div>
         </div>
     )

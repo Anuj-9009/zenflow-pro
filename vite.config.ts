@@ -12,7 +12,25 @@ export default defineConfig({
                     build: {
                         outDir: 'dist-electron',
                         rollupOptions: {
-                            external: ['electron'],
+                            // Externalize packages that can't be bundled (dynamic requires)
+                            external: [
+                                'electron',
+                                'ytdl-core',
+                                'yt-search',
+                                'cheerio',
+                                'miniget',
+                                'm3u8stream',
+                                'sax',
+                                'htmlparser2',
+                                'domutils',
+                                'domhandler',
+                                'dom-serializer',
+                                'css-select',
+                                'css-what',
+                                'entities',
+                                'parse5',
+                                'parse5-htmlparser2-tree-adapter'
+                            ],
                             output: {
                                 format: 'cjs',
                                 entryFileNames: 'main.js',

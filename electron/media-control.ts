@@ -54,10 +54,20 @@ const SCRIPT_NEXT = `
 // const { MediaController } = require('windows-media-controller')
 // const mediaController = new MediaController()
 
+let pollInterval: NodeJS.Timeout | null = null
+
 export function setupMediaControl(mainWindow: Electron.BrowserWindow) {
+    // 0. Cleanup Previous
+    if (pollInterval) clearInterval(pollInterval)
+    ipcMain.removeHandler('media-control')
+
     // 1. Polling Loop (Every 2s)
-    setInterval(async () => {
+    pollInterval = setInterval(async () => {
         try {
+            if (mainWindow.isDestroyed()) {
+                if (pollInterval) clearInterval(pollInterval)
+                return
+            }
             if (process.platform === 'darwin') {
                 const result = await runAppleScript(SCRIPT_GET_TRACK)
                 if (result && result !== 'idle') {
@@ -83,25 +93,15 @@ export function setupMediaControl(mainWindow: Electron.BrowserWindow) {
     })
 
     // 3. Permission Handler for Loopback
-    // Electron requires us to handle 'session.setPermissionRequestHandler' 
-    // or just allow display-media access. 
-    // In recent Electron, desktopCapturer is used, but for 'getDisplayMedia' 
-    // in renderer, it typically prompts the user or we handle the select-source event.
-    // For 'System Audio', 
+    // Clean up old handlers? Session handlers are overwritten, so this is fine.
     mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
         if (permission === 'media') {
-            // For getDisplayMedia / getUserMedia
             return callback(true)
         }
         callback(false)
     })
 
-    // Also specific for display-media
     mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
-        // Auto-select the first screen? Or let user choose?
-        // Ideally we want "System Audio". 
-        // On Mac, getting *just* audio via getDisplayMedia is tricky without user interaction.
-        // We'll trust the default picker for now, or auto-approve if possible.
         callback({})
     })
 }

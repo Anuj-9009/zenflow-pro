@@ -1,7 +1,7 @@
 // ZenFlow Pro - Persistent Fluid Shader Background
 // WebGL shader that runs continuously, supports dimming/blur for lyrics mode
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useStore } from '../store/useStore'
 
 interface FluidShaderProps {
@@ -142,23 +142,40 @@ function extractColors(url: string): Promise<{ dark: number[]; vibrant: number[]
     })
 }
 
-export default function FluidShader({ dimmed = false, blurred = false }: FluidShaderProps) {
+function FluidShader({ dimmed = false, blurred = false }: FluidShaderProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const glRef = useRef<WebGLRenderingContext | null>(null)
     const programRef = useRef<WebGLProgram | null>(null)
     const animationRef = useRef<number>(0)
     const startTimeRef = useRef(Date.now())
     const dimAmountRef = useRef(0)
+    const appFocusedRef = useRef(true) // Performance: Track focus state
 
-    const { track, bass, mids, volume, isPlaying } = useStore()
+    // Use selectors to minimize re-renders
+    const trackArtUrl = useStore(state => state.track.artUrl)
+    const bass = useStore(state => state.bass)
+    const mids = useStore(state => state.mids)
+    const volume = useStore(state => state.volume)
+    const isPlaying = useStore(state => state.isPlaying)
     const [colors, setColors] = useState({ dark: [0.02, 0.02, 0.05], vibrant: [0, 0.5, 0.5] })
+
+    // Performance: Listen for focus changes to pause animations
+    useEffect(() => {
+        const electron = (window as any).electron
+        if (electron?.window?.onFocusChange) {
+            electron.window.onFocusChange((focused: boolean) => {
+                appFocusedRef.current = focused
+                console.log('[FluidShader] Focus changed:', focused)
+            })
+        }
+    }, [])
 
     // Extract colors from album
     useEffect(() => {
-        if (track.artUrl) {
-            extractColors(track.artUrl).then(setColors)
+        if (trackArtUrl) {
+            extractColors(trackArtUrl).then(setColors)
         }
-    }, [track.artUrl])
+    }, [trackArtUrl])
 
     const uniformsRef = useRef<Record<string, WebGLUniformLocation | null>>({})
 
@@ -210,6 +227,12 @@ export default function FluidShader({ dimmed = false, blurred = false }: FluidSh
 
     // Render loop - runs continuously
     const render = useCallback(() => {
+        if (document.hidden) {
+            // Pause if hidden (save GPU)
+            // We don't request next frame. Visibility listener will restart.
+            return
+        }
+
         const gl = glRef.current
         const program = programRef.current
         const canvas = canvasRef.current
@@ -248,8 +271,22 @@ export default function FluidShader({ dimmed = false, blurred = false }: FluidSh
 
     useEffect(() => {
         initGL()
+
+        const handleVisibility = () => {
+            if (!document.hidden) {
+                // Restart loop
+                cancelAnimationFrame(animationRef.current)
+                animationRef.current = requestAnimationFrame(render)
+            }
+        }
+
+        document.addEventListener('visibilitychange', handleVisibility)
         animationRef.current = requestAnimationFrame(render)
-        return () => cancelAnimationFrame(animationRef.current)
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibility)
+            cancelAnimationFrame(animationRef.current)
+        }
     }, [initGL, render])
 
     return (
@@ -267,3 +304,6 @@ export default function FluidShader({ dimmed = false, blurred = false }: FluidSh
         </div>
     )
 }
+
+// Wrap in React.memo to prevent re-renders when parent state changes
+export default React.memo(FluidShader)

@@ -1,10 +1,11 @@
 // Electron Main Process - with Real Media Integration
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
 import path from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { fileURLToPath } from 'url'
+import http from 'http'
 import { setupMediaControl } from './media-control'
 
 // FIX: Disable GPU Acceleration to prevent renderer crashes
@@ -17,6 +18,183 @@ const __dirname = path.dirname(__filename)
 const execAsync = promisify(exec)
 
 let mainWindow: BrowserWindowType | null = null
+let callbackServer: http.Server | null = null
+
+// Start a specific HTTP server for the Loopback Auth Flow
+function startAuthServer() {
+  if (callbackServer) return // Already running
+
+  callbackServer = http.createServer((req, res) => {
+    // Parse URL manually since query might be needed
+    const q = new URL(req.url || '', 'http://localhost:8888')
+
+    // 1. Handle the callback from Spotify (contains #access_token)
+    if (q.pathname === '/callback') {
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end(`
+        <html>
+          <body style="background-color: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px;">
+            <h1 id="status">Processing...</h1>
+            <p id="details">Please wait.</p>
+            <script>
+              const hash = window.location.hash.substring(1);
+              const params = new URLSearchParams(hash);
+              
+              const token = params.get('access_token');
+              const error = params.get('error');
+
+              if (error) {
+                document.getElementById('status').innerText = "Login Failed";
+                document.getElementById('status').style.color = "#ff5555";
+                document.getElementById('details').innerHTML = "Spotify Error Code: <strong>" + error + "</strong><br><br>Tip: If the error is 'access_denied', go to your Spotify Dashboard -> Users Management and add your email.";
+              } 
+              else if (token) {
+                document.getElementById('status').innerText = "Success!";
+                document.getElementById('status').style.color = "#1db954";
+                
+                // Send back to our server to capture it in Node.js
+                fetch('/token?value=' + token)
+                  .then(() => {
+                     document.getElementById('details').innerText = "Closing window...";
+                     setTimeout(() => window.close(), 1000);
+                  })
+                  .catch(err => {
+                     document.getElementById('details').innerText = "Error sending token to app.";
+                  });
+              } else {
+                document.getElementById('status').innerText = "Unknown State";
+                document.getElementById('details').innerText = "No token or error found in URL. Check Dashboard Config.";
+              }
+            </script>
+          </body>
+        </html>
+      `)
+    }
+    // 2. Capture the token sent by the client-side script above
+    else if (q.pathname === '/token') {
+      const token = q.searchParams.get('value')
+      console.log('[Auth Server] Token received:', token?.substring(0, 10) + '...')
+
+      if (token && mainWindow) {
+        // Send to Renderer via IPC (matches preload.ts onSpotifyCode)
+        mainWindow.webContents.send('spotify-code', token)
+        mainWindow.focus() // Bring app to front
+      }
+
+      res.writeHead(200)
+      res.end('OK')
+    }
+  })
+
+  callbackServer.listen(8888, () => {
+    console.log('[Auth Server] Listening on http://localhost:8888')
+  })
+
+  callbackServer.on('error', (err: any) => {
+    console.error('[Auth Server] Error:', err)
+  })
+}
+
+// ======================
+// DEEP LINK HANDLING (zenflow://)
+// ======================
+
+let pendingDeepLink: string | null = null
+
+// Handle zenflow://callback#access_token=XXX
+function handleDeepLink(url: string) {
+  console.log('[Deep Link] Received:', url)
+
+  // If window not ready, queue the link for later
+  if (!mainWindow) {
+    console.log('[Deep Link] Window not ready, queuing...')
+    pendingDeepLink = url
+    return
+  }
+
+  try {
+    let token = ''
+
+    // Check hash fragment (implicit grant flow: #access_token=XXX)
+    const hashIndex = url.indexOf('#')
+    if (hashIndex !== -1) {
+      const hash = url.substring(hashIndex + 1)
+      const params = new URLSearchParams(hash)
+      token = params.get('access_token') || ''
+      console.log('[Deep Link] Parsed from hash, token exists:', !!token)
+    }
+
+    // Fallback to query string
+    if (!token) {
+      const queryIndex = url.indexOf('?')
+      if (queryIndex !== -1) {
+        const query = url.substring(queryIndex + 1)
+        const params = new URLSearchParams(query)
+        token = params.get('access_token') || params.get('code') || ''
+        console.log('[Deep Link] Parsed from query, token exists:', !!token)
+      }
+    }
+
+    if (token) {
+      console.log('[Deep Link] Sending token to renderer (length:', token.length, ')')
+      mainWindow.webContents.send('spotify-code', token)
+      mainWindow.focus()
+    } else {
+      console.log('[Deep Link] No token found in URL:', url)
+    }
+  } catch (err) {
+    console.error('[Deep Link] Parse error:', err)
+  }
+}
+
+// Process any pending deep link after window is ready
+function processPendingDeepLink() {
+  if (pendingDeepLink) {
+    console.log('[Deep Link] Processing queued link...')
+    const url = pendingDeepLink
+    pendingDeepLink = null
+    handleDeepLink(url)
+  }
+}
+
+// Force Single Instance - Required for deep links to work
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  console.log('[App] Another instance running, quitting...')
+  app.quit()
+} else {
+  // Handle Windows/Linux deep links (second instance)
+  app.on('second-instance', (_event, commandLine) => {
+    console.log('[App] Second instance detected, checking for deep link...')
+    const url = commandLine.find(arg => arg.startsWith('zenflow://'))
+    if (url) {
+      handleDeepLink(url)
+    }
+
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
+// Handle macOS deep links (open-url event)
+app.on('open-url', (event, url) => {
+  console.log('[App] open-url event:', url)
+  event.preventDefault()
+  if (url.startsWith('zenflow://')) {
+    handleDeepLink(url)
+  }
+})
+
+// Set as default protocol handler (development)
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('zenflow', process.execPath, [path.resolve(process.argv[1])])
+  }
+} else {
+  app.setAsDefaultProtocolClient('zenflow')
+}
 
 // Run AppleScript and return result
 async function runAppleScript(script: string): Promise<string> {
@@ -239,15 +417,35 @@ function createWindow() {
     }
   })
 
+  // ============ CSP HEADERS FOR MEDIA STREAMING ============
+  // Allow YouTube/Google audio streams for Mirror Engine
+  const ses = mainWindow.webContents.session
+  ses.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+          "media-src 'self' https://*.googlevideo.com https://*.youtube.com https://*.ytimg.com blob: data:; " +
+          "img-src 'self' https://*.spotify.com https://*.scdn.co https://*.ytimg.com data: blob:; " +
+          "connect-src 'self' https://api.spotify.com https://*.googlevideo.com https://*.youtube.com wss: ws:;"
+        ]
+      }
+    })
+  })
+
   setupMediaControl(mainWindow)
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
     mainWindow.webContents.openDevTools()
   } else {
-    mainWindow.loadFile('dist/index.html')
-    // Force Open DevTools for debugging production build
-    mainWindow.webContents.openDevTools()
+    // Production: Load from bundled dist
+    const indexPath = path.join(__dirname, '../dist/index.html')
+    console.log('Loading production file:', indexPath)
+    mainWindow.loadFile(indexPath)
+    // DEBUG: Open DevTools in production for user debugging
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
   }
 
   mainWindow.on('closed', () => {
@@ -260,8 +458,106 @@ function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('Window loaded successfully')
-    // Enable DevTools to debug
-    mainWindow?.webContents.openDevTools()
+    // Process any deep link that arrived before window was ready
+    processPendingDeepLink()
+  })
+
+  // Performance: Notify renderer about focus state for background throttling
+  mainWindow.on('blur', () => {
+    console.log('[Performance] Window blurred - throttling visuals')
+    mainWindow?.webContents.send('app-focus-change', false)
+  })
+
+  mainWindow.on('focus', () => {
+    console.log('[Performance] Window focused - resuming visuals')
+    mainWindow?.webContents.send('app-focus-change', true)
+  })
+
+  // FIX: Spotify OAuth Popup Handler
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    console.log('Popup requested:', url)
+    // Allow Spotify auth to open
+    if (url.startsWith('https://accounts.spotify.com')) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 500,
+          height: 800,
+          autoHideMenuBar: true,
+        }
+      }
+    }
+    // Block others (or handle as external links)
+    return { action: 'deny' }
+  })
+
+  // Watch for the popup to navigate to the callback
+  mainWindow.webContents.on('did-create-window', (popupWindow) => {
+    let tokenSent = false
+
+    const handleUrl = (url: string) => {
+      if (tokenSent) return // Prevent duplicate sends
+      console.log('Popup URL Check:', url)
+
+      // Check for token in URL (hash fragment for implicit grant)
+      if (url.includes('access_token=') || url.includes('#access_token') || url.includes('127.0.0.1') || url.includes('localhost')) {
+        const hashIndex = url.indexOf('#')
+        const queryIndex = url.indexOf('?')
+
+        let tokenOrCode = ''
+
+        // Try hash first (implicit grant flow)
+        if (hashIndex !== -1) {
+          const hash = url.substring(hashIndex + 1)
+          const params = new URLSearchParams(hash)
+          tokenOrCode = params.get('access_token') || ''
+        }
+
+        // Fallback to query params (authorization code flow)
+        if (!tokenOrCode && queryIndex !== -1) {
+          const search = url.substring(queryIndex + 1)
+          const params = new URLSearchParams(search)
+          tokenOrCode = params.get('code') || params.get('access_token') || ''
+        }
+
+        if (tokenOrCode) {
+          console.log('Spotify Token Found!', tokenOrCode.substring(0, 20) + '...')
+          tokenSent = true
+          mainWindow?.webContents.send('spotify-code', tokenOrCode)
+          // popupWindow.close() // DISABLE AUTO-CLOSE per user request (Manual Copy)
+        } else if (url.includes('127.0.0.1') || url.includes('localhost')) {
+          // Redirect happened but no token - close popup anyway to avoid blank screen
+          console.log('Redirect detected but no token, keeping open for manual copy')
+          // popupWindow.close() // DISABLE AUTO-CLOSE per user request (Manual Copy)
+        }
+      }
+    }
+
+    // Check URL on navigation start
+    popupWindow.webContents.on('will-navigate', (_event, url) => {
+      handleUrl(url)
+    })
+
+    // Check URL after navigation completes (catches hash-based redirects)
+    popupWindow.webContents.on('did-navigate', (_event, url) => {
+      handleUrl(url)
+    })
+
+    // Check URL on in-page navigation (SPA-style hash changes)
+    popupWindow.webContents.on('did-navigate-in-page', (_event, url) => {
+      handleUrl(url)
+    })
+
+    // CRITICAL: Catch failed loads (localhost not running in production)
+    popupWindow.webContents.on('did-fail-load', (_event, _errorCode, _errorDescription, validatedURL) => {
+      console.log('Popup failed load:', validatedURL)
+      handleUrl(validatedURL)
+    })
+
+    // Also check on redirect
+    popupWindow.webContents.on('did-redirect-navigation', (_event, url) => {
+      handleUrl(url)
+    })
   })
 }
 
@@ -306,15 +602,131 @@ ipcMain.handle('media:getPlaylists', async () => {
   return await getPlaylists()
 })
 
+// ============ STREAM MIRROR ENGINE ============
+// Resolves Spotify tracks to playable audio URLs via YouTube
+// This enables EQ, Filter, and Visuals on Spotify tracks
+
+ipcMain.handle('resolve-audio', async (_event: any, query: string) => {
+  console.log('[Mirror Engine] Resolving audio for:', query)
+
+  try {
+    // Dynamic import for ESM compatibility
+    const yts = await import('yt-search')
+    const ytdl = await import('ytdl-core')
+
+    // 1. Search for the most accurate match on YouTube
+    const searchResult = await yts.default(query + ' audio')
+
+    if (!searchResult.videos || searchResult.videos.length === 0) {
+      console.error('[Mirror Engine] No videos found for:', query)
+      return { success: false, error: 'No results found' }
+    }
+
+    const video = searchResult.videos[0]
+    console.log('[Mirror Engine] Found:', video.title, '-', video.url)
+
+    // 2. Extract the direct audio stream URL
+    const info = await ytdl.default.getInfo(video.url)
+    const audioFormat = ytdl.default.chooseFormat(info.formats, {
+      quality: 'highestaudio',
+      filter: 'audioonly'
+    })
+
+    if (!audioFormat || !audioFormat.url) {
+      console.error('[Mirror Engine] No audio format found')
+      return { success: false, error: 'No audio format available' }
+    }
+
+    console.log('[Mirror Engine] Audio URL extracted, duration:', info.videoDetails.lengthSeconds)
+
+    return {
+      success: true,
+      url: audioFormat.url,
+      duration: parseInt(info.videoDetails.lengthSeconds),
+      title: video.title,
+      thumbnail: video.thumbnail
+    }
+  } catch (error: any) {
+    console.error('[Mirror Engine] Error:', error.message)
+    return { success: false, error: error.message }
+  }
+})
+
+// Shell operations - for opening external URLs (Spotify OAuth)
+ipcMain.handle('shell:openExternal', async (_event: any, url: string) => {
+  console.log('[Main] shell:openExternal called with:', url)
+  return await shell.openExternal(url)
+})
+
 app.whenReady().then(() => {
   console.log('App ready')
+  startAuthServer() // Start OAuth callback server
   createWindow()
+  createWidgetWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     }
   })
+})
+
+let widgetWindow: BrowserWindowType | null = null
+
+function createWidgetWindow() {
+  // Shared Preload
+  const preloadPath = app.isPackaged
+    ? path.join(__dirname, 'preload.js')
+    : path.join(__dirname, 'preload.js')
+
+  widgetWindow = new BrowserWindow({
+    width: 60, height: 60, // Start as Orb
+    minWidth: 60, minHeight: 60,
+    maxWidth: 300, maxHeight: 120,
+    frame: false, transparent: true, alwaysOnTop: true,
+    resizable: true, // Allow resizing via API
+    hasShadow: false,
+    skipTaskbar: true,
+    show: false, // Hidden by default
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false
+    }
+  })
+
+  if (process.env.VITE_DEV_SERVER_URL) {
+    widgetWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}#/widget`)
+  } else {
+    widgetWindow.loadFile('dist/index.html', { hash: 'widget' })
+  }
+
+  // widgetWindow.webContents.openDevTools({ mode: 'detach' }) // Debug Widget
+}
+
+// Widget IPC
+ipcMain.handle('window:toggleMiniPlayer', async (_event, show) => {
+  if (!widgetWindow) createWidgetWindow()
+  if (show) {
+    widgetWindow?.show()
+    mainWindow?.hide()
+  } else {
+    widgetWindow?.hide()
+    mainWindow?.show()
+  }
+})
+
+ipcMain.handle('window:resizeWidget', async (_event, { width, height }) => {
+  if (widgetWindow) {
+    widgetWindow.setSize(width, height, true) // animate if possible
+  }
+})
+
+ipcMain.handle('window:sendSyncState', async (_event, state) => {
+  if (widgetWindow) {
+    widgetWindow.webContents.send('sync-state', state)
+  }
 })
 
 app.on('window-all-closed', () => {

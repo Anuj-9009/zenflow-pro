@@ -20,10 +20,24 @@ export interface WindowControls {
     controlMedia: (action: string) => Promise<any>
 }
 
+// Mirror Engine - YouTube audio resolver for full DJ processing
+export interface AudioMirror {
+    resolveAudio: (query: string) => Promise<{
+        success: boolean
+        url?: string
+        duration?: number
+        title?: string
+        thumbnail?: string
+        error?: string
+    }>
+}
+
 export interface ElectronAPI {
     platform: string
     media: MediaControls
     window: WindowControls
+    shell?: { openExternal: (url: string) => Promise<void> }
+    audio?: AudioMirror
 }
 
 declare global {

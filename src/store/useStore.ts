@@ -17,6 +17,7 @@ interface TrackInfo {
     artUrl: string | null
     duration: number
     position: number
+    uri?: string // Added for Spotify/Remote link
     path?: string // Added Path
 }
 
@@ -256,7 +257,7 @@ export const useStore = create<AudioState>((set, get) => {
                 })
                 runAudioLoop()
 
-                setInterval(() => get().fetchMetadata(), 500)
+                setInterval(() => get().fetchMetadata(), 200)
                 get().fetchMetadata()
 
                 // Fetch Playlists (if available)

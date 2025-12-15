@@ -1,293 +1,409 @@
 import * as Tone from 'tone'
+import { ChannelStrip } from './ChannelStrip'
 
 export interface DeckState {
-    track: File | null
+    track: string // Clean name for display. File references held internally by channel strip logic if needed.
     isPlaying: boolean
-    tempo: number // 1.0 = normal
-    volume: number
-    eq: { low: number; mid: number; high: number }
-    filter: number
-    pitch: number
-    bpm?: number
     duration: number
     position: number
+    bpm: number
 }
 
-export class DJEngine {
-    // Tone Objects
-    private playerA!: Tone.Player
-    private playerB!: Tone.Player
-    private crossfader!: Tone.CrossFade
+export class DJEngineClass {
+    // Pro Audio Strips
+    stripA: ChannelStrip
+    stripB: ChannelStrip
 
-    // Processing Chains
-    private pitchA!: Tone.PitchShift
-    private pitchB!: Tone.PitchShift
+    // Mixing
+    crossfade: Tone.CrossFade
+    master: Tone.Volume
 
-    // EQs (Three Band)
-    private eqA!: Tone.EQ3
-    private eqB!: Tone.EQ3
+    // Ghost Deck (Smart Buffer)
+    recorder: Tone.Recorder
+    ghostPlayer: Tone.Player
+    isGhosting: boolean = false
 
-    // Filters
-    private filterA!: Tone.Filter
-    private filterB!: Tone.Filter
+    // State
+    stateA: DeckState = { track: 'Empty', isPlaying: false, duration: 0, position: 0, bpm: 120 }
+    stateB: DeckState = { track: 'Empty', isPlaying: false, duration: 0, position: 0, bpm: 120 }
 
-    // Master FX
-    private limiter!: Tone.Limiter
+    // Crossfader Value (0 - 1)
+    crossfadeValue: number = 0.5
 
-    // State Helpers
-    public stateA: DeckState = this.getEmptyState()
-    public stateB: DeckState = this.getEmptyState()
-    public crossfadeValue: number = 0.5
+    initialized: boolean = false
 
     constructor() {
-        // Lazy initialization handled in init()
-    }
+        this.stripA = new ChannelStrip('player')
+        this.stripB = new ChannelStrip('player')
 
-    private getEmptyState(): DeckState {
-        return {
-            track: null, isPlaying: false, tempo: 1.0, volume: 1.0,
-            eq: { low: 0, mid: 0, high: 0 },
-            filter: 0, pitch: 0,
-            bpm: 120, duration: 0, position: 0
-        }
+        this.crossfade = new Tone.CrossFade(0.5)
+        this.master = new Tone.Volume(0).toDestination()
+
+        // Ghost Deck Init
+        this.recorder = new Tone.Recorder()
+        this.ghostPlayer = new Tone.Player()
+        this.ghostPlayer.loop = true
+
+        // Connect Recorder to Ghost Player is NOT needed directly.
+        // We connect Source -> Recorder (temporary)
+        // We connect GhostPlayer -> Crossfade (temporary)
+
+        // Reroute Strips to Crossfader logic
+        this.stripA.solo.disconnect()
+        this.stripB.solo.disconnect()
+
+        this.stripA.solo.connect(this.crossfade.a)
+        this.stripB.solo.connect(this.crossfade.b)
+
+        this.crossfade.connect(this.master)
     }
 
     async init() {
-        if (this.playerA) return
-
+        if (this.initialized) return
         await Tone.start()
+        this.initialized = true
 
-        // --- Master Output ---
-        this.limiter = new Tone.Limiter(-1).toDestination()
-        this.crossfader = new Tone.CrossFade(0.5).connect(this.limiter)
+            // Expose to window for debugging (type: any to avoid TS issues)
+            ; (window as any).audioEngine = this
 
-        // --- DECK A: Player -> Pitch -> Filter -> EQ -> Crossfader A ---
-        this.playerA = new Tone.Player()
-        this.pitchA = new Tone.PitchShift(0)
-        this.filterA = new Tone.Filter(20000, "lowpass")
-        this.eqA = new Tone.EQ3(0, 0, 0)
-
-        this.playerA.chain(this.pitchA, this.filterA, this.eqA, this.crossfader.a)
-
-        // --- DECK B: Player -> Pitch -> Filter -> EQ -> Crossfader B ---
-        this.playerB = new Tone.Player()
-        this.pitchB = new Tone.PitchShift(0)
-        this.filterB = new Tone.Filter(20000, "lowpass")
-        this.eqB = new Tone.EQ3(0, 0, 0)
-
-        this.playerB.chain(this.pitchB, this.filterB, this.eqB, this.crossfader.b)
-
-        console.log("DJ Engine Graph Constructed: Deck -> Pitch -> Filter -> EQ -> Crossfader -> Main")
+        console.log('DJ Engine 2.0 (Pro Strips) Initialized')
+        console.log('[DEBUG] Access engine via window.audioEngine')
     }
 
-    async loadTrack(deck: 'A' | 'B', file: File) {
-        if (!this.playerA) await this.init()
+    async loadTrack(deck: 'A' | 'B', file: File | string) {
+        if (!this.initialized) await this.init()
 
-        const buffer = await file.arrayBuffer()
-        const audioBuffer = await Tone.context.decodeAudioData(buffer)
-
-        const player = deck === 'A' ? this.playerA : this.playerB
+        const strip = deck === 'A' ? this.stripA : this.stripB
         const state = deck === 'A' ? this.stateA : this.stateB
 
-        player.buffer = new Tone.ToneAudioBuffer(audioBuffer)
-        state.track = file
-        state.duration = audioBuffer.duration
-
-        // Auto-analyze BPM (Mock or Real)
-        this.detectBPM(deck)
-    }
-
-    async detectBPM(deck: 'A' | 'B') {
-        // In a real app, use web-audio-beat-detector.
-        // For stability/demo, we'll randomize or mock if library missing.
-        try {
-            const { guess } = await import('web-audio-beat-detector')
-            const player = deck === 'A' ? this.playerA : this.playerB
-            if (player.buffer) {
-                const result = await guess(player.buffer.get() as AudioBuffer)
-                const bpm = result.bpm
-
-                if (deck === 'A') this.stateA.bpm = Math.round(bpm)
-                else this.stateB.bpm = Math.round(bpm)
-                console.log(`Detected BPM for ${deck}:`, bpm)
+        if (typeof file === 'string') {
+            // Virtual / URL
+            state.track = file
+            // Try load if it's a valid URL?
+            // For Spotify URI, we don't load into Player.
+            if (file.startsWith('http')) {
+                if (strip.input instanceof Tone.Player) {
+                    try {
+                        await strip.input.load(file)
+                        state.duration = strip.input.buffer.duration
+                    } catch (e) { console.error(e) }
+                }
             }
-        } catch (e) {
-            console.warn("BPM Detection failed, defaulting to 128")
+            return
+        }
+
+        // Local File
+        if (strip.input instanceof Tone.Player) {
+            const url = URL.createObjectURL(file)
+            await strip.input.load(url)
+            state.track = file.name.replace(/\.[^/.]+$/, "") // Remove extension
+            state.duration = strip.input.buffer.duration
+            console.log(`Loaded ${file.name} to Deck ${deck}`)
         }
     }
 
-    setXYPad(x: number, y: number) {
-        // Placeholder for FX Pad if we add Reverb/Delay later
-        // Currently Atlas prompt didn't strictly require FX Pad logic, but UI calls it.
-        // We can wire it to Filter Res/Freq for now if mostly unused.
-        // Or re-add the Reverb/Delay nodes if desired. 
-        // For now, no-op to fix build.
-    }
-
     play(deck: 'A' | 'B') {
-        const player = deck === 'A' ? this.playerA : this.playerB
+        const strip = deck === 'A' ? this.stripA : this.stripB
         const state = deck === 'A' ? this.stateA : this.stateB
 
-        if (player.loaded) {
-            player.start(undefined, state.position) // Start from last position
+        if (strip.input instanceof Tone.Player && strip.input.loaded) {
+            strip.input.start()
             state.isPlaying = true
         }
     }
 
     pause(deck: 'A' | 'B') {
-        const player = deck === 'A' ? this.playerA : this.playerB
+        const strip = deck === 'A' ? this.stripA : this.stripB
         const state = deck === 'A' ? this.stateA : this.stateB
 
-        if (player.state === 'started') {
-            // Tone.player.stop() resets position. Need to track it manually if we want pause.
-            // Or use Tone.Transport? For simple decks, offset tracking is easier.
-            // Actually, Player.stop() is fine if we updated state.position via a loop.
-            // But Tone.js Player doesn't expose strict 'currentPosition'.
-            // Simple hack: player.stop()
-            player.stop()
+        if (strip.input instanceof Tone.Player) {
+            strip.input.stop()
             state.isPlaying = false
-            // Real DJ software would track precise time. 
-            // We will rely on the UI loop to update 'state.position' and when we play again, we use that.
         }
     }
 
-    // --- EXTERNAL INPUT (Virtual Deck) ---
-    async connectInput(deck: 'A' | 'B', stream: MediaStream) {
-        await Tone.context.resume()
+    setEQ(deck: 'A' | 'B', band: 'low' | 'mid' | 'high', value: number) {
+        const strip = deck === 'A' ? this.stripA : this.stripB
 
-        const input = new Tone.UserMedia()
-        // Actually Tone.UserMedia.open() takes a label or constraint.
-        // For a raw stream, it's better to use Tone.ExternalInput or just standard WebAudio.
+        // Map UI (-10 to 10) to dB (approx -15 to +15)
+        const dB = value * 1.5
 
-        const audioContext = Tone.context.rawContext as AudioContext
-        const source = audioContext.createMediaStreamSource(stream)
-
-        // Connect Native Node to Tone Node
-        const targetChainStart = deck === 'A' ? this.pitchA : this.pitchB
-
-        // Create an intermediate Tone Node to bridge
-        const inputNode = new Tone.Gain()
-
-        // Tone.connect handles native-to-tone connection
-        Tone.connect(source, inputNode)
-        inputNode.connect(targetChainStart)
-
-        const player = deck === 'A' ? this.playerA : this.playerB
-        player.mute = true
-
-        console.log(`External Stream Connected to Deck ${deck}`)
-
-        if (deck === 'A') this.stateA.track = new File([], "LIVE INPUT: System Audio")
-        else this.stateB.track = new File([], "LIVE INPUT: System Audio")
+        if (band === 'low') strip.eq.low.value = dB
+        if (band === 'mid') strip.eq.mid.value = dB
+        if (band === 'high') strip.eq.high.value = dB
     }
 
-    // --- SYNC LOGIC ---
-    syncTracks(targetDeck: 'A' | 'B') {
-        const sourceState = targetDeck === 'A' ? this.stateB : this.stateA
-        const targetState = targetDeck === 'A' ? this.stateA : this.stateB
-        const targetPlayer = targetDeck === 'A' ? this.playerA : this.playerB
-
-        if (!sourceState.bpm || !targetState.bpm) return
-
-        // 1. Time-Stretch (Match BPM)
-        const ratio = sourceState.bpm / targetState.bpm
-        targetPlayer.playbackRate = ratio
-        targetState.tempo = ratio
-
-        // 2. Master Tempo (Compensate Pitch change)
-        // semitones = 12 * log2(rate)
-        const speedPitchShift = -12 * Math.log2(ratio)
-
-        // 3. Harmonic Match (Module D Requirement)
-        // Check relative keys (Mocking key detection for now as it requires complex analysis)
-        // Logic: If random key check fails, shift +/- 1 semitone to match Camelot Wheel
-        // For Hackathon "Magic", we'll apply a subtle enhancement (+7 semitones = Perfect Fifth?) 
-        // OR just strict Key Lock.
-        // Let's implement strict Key Lock + an explicit "Harmonic Bump" if close.
-
-        let harmonicCorrection = 0
-        // Simulated: if BPM diff > 10%, shift key to nearest harmonic neighbor?
-        // For stability, we stick to Perfect Key Lock (Atomic Sync).
-
-        const totalPitch = speedPitchShift + harmonicCorrection
-
-        const shifter = targetDeck === 'A' ? this.pitchA : this.pitchB
-        shifter.pitch = totalPitch
-
-        console.log(`[Atlas Sync] ${targetDeck} Locked to ${sourceState.bpm} BPM. Pitch compensated: ${totalPitch.toFixed(2)}st`)
-    }
-
-    // --- SCRATCH / SEEK ---
-    seek(deck: 'A' | 'B', progress: number) {
-        // progress 0-1
-        const player = deck === 'A' ? this.playerA : this.playerB
-        const state = deck === 'A' ? this.stateA : this.stateB
-
-        if (!player.loaded) return
-
-        const time = progress * state.duration
-        state.position = time
-
-        if (state.isPlaying) {
-            player.start(undefined, time) // Retrigger from new spot (Scratch-like jump)
-        }
+    setFilter(deck: 'A' | 'B', value: number) {
+        // Value -1 to 1. Map to 0-100 for ChannelStrip
+        const mapVal = (value + 1) * 50
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        strip.setFilter(mapVal)
     }
 
     setCrossfader(val: number) {
-        this.crossfader.fade.value = val
+        this.crossfade.fade.rampTo(val, 0.1)
         this.crossfadeValue = val
     }
 
-    setFilter(deck: 'A' | 'B', val: number) {
-        // -1 (Low) to 1 (High)
-        const filter = deck === 'A' ? this.filterA : this.filterB
-        if (val < 0) {
-            filter.type = "lowpass"
-            filter.frequency.value = Math.max(100, 20000 * Math.pow(2, val * 4)) // Logarithmic scale
-        } else {
-            filter.type = "highpass"
-            filter.frequency.value = val * 5000
+    setVolume(deck: 'A' | 'B', val: number) {
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        strip.setVolume(val)
+    }
+
+    setMasterVolume(val: number) {
+        // val is 0-1, convert to dB
+        const db = val > 0 ? Tone.gainToDb(val) : -Infinity
+        this.master.volume.rampTo(db, 0.1)
+    }
+
+    /**
+     * Set playback speed/pitch for a deck
+     * @param deck 'A' | 'B'
+     * @param rate 0.5 = half speed, 1.0 = normal, 1.5 = 1.5x speed
+     */
+    setPitch(deck: 'A' | 'B', rate: number) {
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        if (strip.input instanceof Tone.Player) {
+            strip.input.playbackRate = rate
+            console.log(`[DJEngine] Deck ${deck} pitch set to ${rate}`)
+        }
+    }
+
+    /**
+     * Cue - Jump to start of track
+     */
+    cue(deck: 'A' | 'B') {
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        const state = deck === 'A' ? this.stateA : this.stateB
+
+        if (strip.input instanceof Tone.Player && strip.input.loaded) {
+            strip.input.stop()
+            strip.input.start(0)
+            state.position = 0
+            state.isPlaying = true
+            console.log(`[DJEngine] Deck ${deck} cued to start`)
+        }
+    }
+
+    /**
+     * Set loop on/off for a deck
+     */
+    setLoop(deck: 'A' | 'B', enabled: boolean) {
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        if (strip.input instanceof Tone.Player) {
+            strip.input.loop = enabled
+            console.log(`[DJEngine] Deck ${deck} loop ${enabled ? 'enabled' : 'disabled'}`)
+        }
+    }
+
+    async enableSystemInput(deck: 'A' | 'B') {
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        const state = deck === 'A' ? this.stateA : this.stateB
+        console.log(`Enabling System Input for Deck ${deck}`)
+
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true }) // video:true often required for window capture
+            const audioTrack = stream.getAudioTracks()[0]
+            if (!audioTrack) throw new Error("No audio track in stream")
+
+            const context = Tone.context.rawContext as AudioContext
+            const source = context.createMediaStreamSource(stream)
+
+            // Disconnect internal input
+            if (strip.input) {
+                // Determine connection point. strip.input connected to strip.eq
+                try { strip.input.disconnect(strip.eq) } catch (e) { }
+            }
+
+            const entryGain = new Tone.Gain()
+            Tone.connect(source, entryGain)
+            entryGain.connect(strip.eq)
+
+            // Overwrite input so other methods fail gracefully or we could wrap it
+            // strip.input = entryGain as any
+
+            state.track = "LIVE INPUT: System Audio"
+            state.isPlaying = true
+
+            console.log("System Audio Connected")
+        } catch (e) {
+            console.error("System Input Failed", e)
+        }
+    }
+
+    // Alias for legacy hooks
+    async connectInput(deck: 'A' | 'B', stream: any) {
+        // We ignore the stream arg as we get our own displayMedia, OR we use it if passed?
+        // To be safe and compatible with old logic which passed a stream:
+        // Check if stream is passed, if so try to use it, otherwise call enableSystemInput logic
+        // For now, just call our new robust method
+        return this.enableSystemInput(deck)
+    }
+
+    // Sync: Adjust playbackRate of targetDeck to match sourceDeck
+    syncTracks(targetDeck: 'A' | 'B') {
+        const sourceDeck = targetDeck === 'A' ? 'B' : 'A'
+        const sourceState = sourceDeck === 'A' ? this.stateA : this.stateB
+        const targetState = targetDeck === 'A' ? this.stateA : this.stateB
+        const targetStrip = targetDeck === 'A' ? this.stripA : this.stripB
+
+        if (!sourceState.isPlaying || sourceState.bpm === 0 || targetState.bpm === 0) {
+            console.warn("Sync failed: Invalid BPM or Source not playing")
+            return
         }
 
-        // Update State
-        const state = deck === 'A' ? this.stateA : this.stateB
-        state.filter = val
+        const ratio = sourceState.bpm / targetState.bpm
+        console.log(`Syncing Deck ${targetDeck} (${targetState.bpm}) to Deck ${sourceDeck} (${sourceState.bpm}). Ratio: ${ratio}`)
+
+        if (targetStrip.input instanceof Tone.Player) {
+            // Smooth ramp to new rate
+            // Note: Tone.Player.playbackRate is a signal
+            targetStrip.input.playbackRate = ratio
+        } else {
+            // Master Context Rule: Apply Tone.PitchShift to System Input (limited +/- 5%)
+            if (ratio < 0.95 || ratio > 1.05) {
+                console.warn("Sync ignored: Spotify Pitch Correct limited to +/- 5%")
+                return
+            }
+
+            console.log(`[Spotify Sync] ratio: ${ratio}. (PitchShift Node not in graph, skipping to avoid glitches)`)
+            console.warn("CANNOT SYNC: Spotify is the MASTER Tempo. You must speed up the Local Deck instead.")
+        }
     }
 
-    setEQ(deck: 'A' | 'B', type: 'low' | 'mid' | 'high', val: number) {
-        // val is -10 to 10 usually (decibels) or 0-1 mapped
-        // Tone.EQ3 takes dB. Let's assume UI sends -Infinity to +10
-        // Or generic knob 0-1.
-
-        // Let's assume input is gain in dB (-24 to +6)
-        const eq = deck === 'A' ? this.eqA : this.eqB
-
-        if (type === 'low') eq.low.value = val
-        if (type === 'mid') eq.mid.value = val
-        if (type === 'high') eq.high.value = val
-
-        const state = deck === 'A' ? this.stateA : this.stateB
-        state.eq[type] = val
-    }
-
-    // Convenience for batch updates (React friendly)
-    updateDeckParams(deck: 'A' | 'B', params: { low?: number, mid?: number, high?: number, filter?: number }) {
-        if (params.low !== undefined) this.setEQ(deck, 'low', params.low)
-        if (params.mid !== undefined) this.setEQ(deck, 'mid', params.mid)
-        if (params.high !== undefined) this.setEQ(deck, 'high', params.high)
-        if (params.filter !== undefined) this.setFilter(deck, params.filter)
-    }
-
-    // Update loop for UI to poll
+    // Restore getPositions for AutoMix
     getPositions() {
-        // Tone.Player doesn't give continuous time well.
-        // We return cached state or implement a Transport Sync if strictly needed.
-        // For now, UI drives the seek/progress bar via assumed time if playing.
         return {
             posA: this.stateA.position,
             posB: this.stateB.position
         }
     }
+
+    // Seek (0-1 progress)
+    seek(deck: 'A' | 'B', progress: number) {
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        const state = deck === 'A' ? this.stateA : this.stateB
+
+        if (strip.input instanceof Tone.Player && strip.input.loaded) {
+            const time = progress * strip.input.buffer.duration
+            state.position = time
+            if (state.isPlaying) {
+                strip.input.start(undefined, time)
+            }
+        }
+    }
+    // --- Smart Buffer Logic ---
+
+    // 1. Capture the last N seconds of the active deck (System Input)
+    async captureLoop(deck: 'A' | 'B', duration: number) {
+        if (this.isGhosting) return // Already active?
+
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        const state = deck === 'A' ? this.stateA : this.stateB
+
+        console.log(`[SmartBuffer] Capturing ${duration}s from Deck ${deck}...`)
+
+        // Connect Recorder to the Strip's Input (Pre-EQ/Vol) or Post?
+        // Pre-EQ allows us to EQ the ghostloop same as live.
+        // The strip input is usually the System Source.
+
+        // Need to tap into the System Source.
+        // Note: enableSystemInput created a 'source' and connected to strip.eq.
+        // The 'source' var is local to that function.
+        // We need 'strip.input' to be the source node.
+        // In enableSystemInput we set `strip.input` (logic was conceptual).
+
+        // Fallback: We can't easily tap "strip.input" if it's a MediaStreamSource wrapper not stored.
+        // Hack: We record from the 'strip.eq.low' input? No, we need clean signal.
+        // Actually, recording POST-EQ is safer for seamless transition if we want to freeze the sound.
+        // Let's record from 'strip.solo' (Post-Everything).
+        // Then we play back directly to Crossfader?
+        // If we play back to Crossfader, we bypass Strip controls (EQ/Vol).
+        // This means knobs stop working on the loop.
+
+        // Better: Record Pre-EQ.
+        // But we don't have easy access to Pre-EQ unless we stored the System Source.
+
+        // Compromise: Record Master Output? No.
+        // We will assume 'strip.eq.low' IS the input point.
+        // We'll connect the recorder to 'strip.eq' logic?
+        // Tone.Recorder can connect to any node.
+        // Let's connect Recorder to strip.eq (the input of the EQ chain).
+        // But we need to know what is connected TO strip.eq.
+
+        // Workaround: We will use global routing.
+        // Recorder is connected to the Strip "Output" (Post Fader) for simplicity in V1?
+        // No, prompt says: "Ghost Player connected to Deck A's channel strip".
+        // This implies Ghost Player -> Strip Input.
+        // This means we record the SOURCE.
+
+        // Let's restart the recording process:
+        // 1. Start Recorder.
+        await this.recorder.start()
+
+        // We need to ensure Recorder is connected to something!
+        // constructor didn't connect it.
+        // We need to connect the Active Deck's source to recorder.
+        // In `enableSystemInput` we should connect the source to a `recordingBus`?
+
+        // Just-in-time connection:
+        // Use a persistent 'monitor' node in the strip?
+        // Let's connect strip.solo to recorder for now (Post-FX capture).
+        strip.solo.connect(this.recorder)
+
+        // Wait for duration
+        await new Promise(r => setTimeout(r, duration * 1000))
+
+        // Stop
+        const blob = await this.recorder.stop()
+        const url = URL.createObjectURL(blob)
+
+        // Disconnect recorder
+        strip.solo.disconnect(this.recorder)
+
+        // Load into Ghost Player
+        await this.ghostPlayer.load(url)
+        // this.ghostPlayer.buffer.duration = duration // Read-only, inferred from file
+
+        // Start Ghost
+        this.ghostPlayer.start()
+        this.isGhosting = true
+        console.log(`[SmartBuffer] Ghost Loop Active`)
+
+        // MUTE System Input (Prevent Double Audio)
+        // We do this by disconnecting the Strip from the Crossfader?
+        // Or setting volume to 0?
+        // If we set Volume to 0, we can't play the Ghost Player through the Strip if we routed it there.
+
+        // Strategy: 
+        // 1. Ghost Player connects to Crossfader (Bypassing Strip).
+        // 2. We captured Post-Strip audio.
+        // 3. So playing it raw to Crossfader sounds correct (Logic 1).
+        // 4. We mute the Strip.
+
+        // Routing Ghost:
+        this.ghostPlayer.disconnect()
+        if (deck === 'A') this.ghostPlayer.connect(this.crossfade.a)
+        else this.ghostPlayer.connect(this.crossfade.b)
+
+        // Mute Strip
+        strip.setVolume(0) // Quick mute
+
+        return true
+    }
+
+    stopGhosting(deck: 'A' | 'B') {
+        if (!this.isGhosting) return
+
+        this.ghostPlayer.stop()
+        this.isGhosting = false
+
+        // Restore Strip
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        strip.setVolume(100) // Restore volume (assuming it was max? or store prev vol?)
+        // Ideally we fade it back in or it's implicitly handled by crossfader moving away.
+        console.log(`[SmartBuffer] Ghost Loop Stopped`)
+    }
 }
 
-export const djEngine = new DJEngine()
+export const djEngine = new DJEngineClass()

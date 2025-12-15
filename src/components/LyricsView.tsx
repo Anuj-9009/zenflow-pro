@@ -1,158 +1,229 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store/useStore'
+import { SpotifyBridge } from '../services/SpotifyBridge'
+import { djEngine } from '../audio/DJEngine'
 
-// FIX 1: ULTRA-SMOOTH LYRICS ENGINE ("Karaoke Style")
-export default function LyricsView() {
+interface LrcLine {
+    time: number
+    text: string
+}
+
+export default function LyricsVisualizer() {
     const { track, isPlaying, lastPlaybackUpdate, colors } = useStore()
-    const [lines, setLines] = useState<{ time: number, text: string, duration?: number }[]>([])
+    const [lines, setLines] = useState<LrcLine[]>([])
+    const [loading, setLoading] = useState(false)
+    const [activeLineIndex, setActiveLineIndex] = useState(-1)
+    const [hoverIndex, setHoverIndex] = useState(-1)
 
-    const containerRef = useRef<HTMLDivElement>(null)
+    // Refs for animation
+    const contentRef = useRef<HTMLDivElement>(null)
     const frameRef = useRef<number>()
+    const linesRef = useRef<LrcLine[]>([])
 
-    // Fetch Lyrics & Calculate Durations
+    // Fetch Lyrics
     useEffect(() => {
         if (!track.name) return
+        setLoading(true)
         setLines([])
-        if (containerRef.current) containerRef.current.scrollTop = 0
+        linesRef.current = []
+        setActiveLineIndex(-1)
 
-        fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(track.name + ' ' + track.artist)}`)
+        const query = `${track.name} ${track.artist}`
+        fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(query)}`)
             .then(res => res.json())
             .then(data => {
-                if (data?.[0]?.syncedLyrics) {
+                if (data && data[0] && data[0].syncedLyrics) {
                     const parsed = parseLrc(data[0].syncedLyrics)
-                    // Calculate durations
-                    for (let i = 0; i < parsed.length; i++) {
-                        const nextTime = parsed[i + 1]?.time || (parsed[i].time + 5) // default 5s if last
-                        parsed[i].duration = nextTime - parsed[i].time
-                    }
                     setLines(parsed)
+                    linesRef.current = parsed
                 } else {
-                    setLines([{ time: 0, text: "Instrumental / Lyrics Not Found", duration: 999 }])
+                    setLines([{ time: 0, text: "No synced lyrics found." }])
+                    linesRef.current = [{ time: 0, text: "Instructional: Just vibe." }]
                 }
             })
-            .catch(() => setLines([{ time: 0, text: "Lyrics Unavailable", duration: 999 }]))
-    }, [track.name])
+            .catch(() => {
+                setLines([{ time: 0, text: "Lyrics unavailable." }])
+            })
+            .finally(() => setLoading(false))
+    }, [track.name, track.artist])
 
-    const parseLrc = (lrc: string) => lrc.split('\n').map(line => {
-        const match = line.match(/\[(\d+):(\d+\.\d+)\](.*)/)
-        if (!match) return null
-        return { time: parseInt(match[1]) * 60 + parseFloat(match[2]), text: match[3].trim() }
-    }).filter(Boolean) as { time: number, text: string, duration?: number }[]
+    // Parse LRC
+    const parseLrc = (lrc: string): LrcLine[] => {
+        return lrc.split('\n').map(line => {
+            const match = line.match(/\[(\d+):(\d+\.\d+)\](.*)/)
+            if (match) {
+                const min = parseInt(match[1])
+                const sec = parseFloat(match[2])
+                return { time: min * 60 + sec, text: match[3].trim() }
+            }
+            return null
+        }).filter(Boolean) as LrcLine[]
+    }
 
-    // The Render Loop (60fps)
+    // Interaction
+    const handleSeek = async (seconds: number) => {
+        // Determine source? For Hackathon, mostly Spotify or Local.
+        // If track has spotify URI, use Bridge.
+        // We lack explicit source flag in minimal store, check URI or try both/one.
+        if (track.uri?.includes('spotify')) {
+            await SpotifyBridge.seek(Math.round(seconds * 1000))
+        } else {
+            // Assume Deck A for now if local? Or check logic.
+            // Simplified: Just log/try Deck A local or update Store to support seek request
+            // djEngine.seek('A', 0.5) // seek(deck, percent) - Engine API mismatched
+            // Actually Engine.seek takes (deck, progress0-1). We have seconds.
+            // We need duration.
+            const duration = track.duration || 1
+            const progress = seconds / duration
+            djEngine.seek('A', progress)
+        }
+    }
+
+    // Optimized Render Loop
     useEffect(() => {
-        const update = () => {
-            if (!containerRef.current || lines.length === 0) {
-                frameRef.current = requestAnimationFrame(update)
+        const loop = () => {
+            // If unmounted or empty
+            if (!contentRef.current || linesRef.current.length === 0) {
+                frameRef.current = requestAnimationFrame(loop)
                 return
             }
 
-            // Calculate Exact Audio Time
             const now = Date.now()
-            // If playing, interpolate. If not, stick to static position.
+            const timeSinceUpdate = (now - lastPlaybackUpdate) / 1000
             const audioTime = isPlaying
-                ? (track.position || 0) + ((now - lastPlaybackUpdate) / 1000)
+                ? (track.position || 0) + timeSinceUpdate
                 : (track.position || 0)
 
             // Find Active Line
+            const currentLines = linesRef.current
             let activeIdx = -1
-            for (let i = 0; i < lines.length; i++) {
-                if (audioTime >= lines[i].time && audioTime < (lines[i].time + (lines[i].duration || 5))) {
+            let percentDone = 0
+
+            for (let i = 0; i < currentLines.length; i++) {
+                const lineTime = currentLines[i].time
+                const nextLineTime = currentLines[i + 1]?.time || Infinity // or lineTime + 3s default
+
+                if (audioTime >= lineTime && audioTime < nextLineTime) {
                     activeIdx = i
+                    const duration = nextLineTime === Infinity ? 5 : nextLineTime - lineTime
+                    percentDone = Math.max(0, Math.min(1, (audioTime - lineTime) / duration))
                     break
                 }
             }
 
-            // Direct DOM Manipulation for Perf
-            const children = containerRef.current.children
-            for (let i = 0; i < children.length; i++) {
-                const el = children[i] as HTMLElement
-
-                if (i === activeIdx) {
-                    // Active Styles
-                    el.style.opacity = '1'
-                    el.style.transform = 'scale(1.05)'
-                    el.style.filter = 'blur(0px)'
-                    // Gradient Logic (Karaoke)
-                    const line = lines[i]
-                    if (line.duration) {
-                        const progress = Math.max(0, Math.min(1, (audioTime - line.time) / line.duration))
-                        const pct = progress * 100
-                        el.style.backgroundImage = `linear-gradient(to right, white ${pct}%, rgba(255,255,255,0.4) ${pct}%)`
-                        el.style.webkitBackgroundClip = 'text'
-                        el.style.backgroundClip = 'text'
-                        el.style.color = 'transparent' // text-fill-color transparent
-                    }
-
-                    // Smooth Auto-Scroll
-                    const targetTop = el.offsetTop - (containerRef.current.clientHeight / 2) + (el.clientHeight / 2)
-                    // Lerp scrollTop
-                    const currentTop = containerRef.current.scrollTop
-                    const diff = targetTop - currentTop
-                    if (Math.abs(diff) > 1) {
-                        containerRef.current.scrollTop = currentTop + (diff * 0.05) // Smooth ease
-                    }
-
-                } else {
-                    // Inactive Styles
-                    el.style.backgroundImage = 'none'
-                    el.style.color = 'rgba(255,255,255,0.3)'
-                    el.style.transform = 'scale(1)'
-
-                    // Distance Blur
-                    const dist = Math.abs(i - activeIdx)
-                    if (activeIdx !== -1) {
-                        el.style.filter = `blur(${Math.min(4, dist * 1)}px)`
-                        el.style.opacity = `${Math.max(0.1, 0.5 - (dist * 0.1))}`
-                    } else {
-                        el.style.filter = 'blur(0px)'
-                        el.style.opacity = '0.5'
-                    }
-                }
+            // Sync React State for classes/scroll target
+            if (activeIdx !== activeLineIdxRef.current) {
+                activeLineIdxRef.current = activeIdx
+                setActiveLineIndex(activeIdx)
             }
 
-            frameRef.current = requestAnimationFrame(update)
+            // --- DIRECT DOM MANIPULATION (Zero-State Render) ---
+            if (activeIdx !== -1) {
+                const activeEl = contentRef.current.children[activeIdx] as HTMLElement
+                if (activeEl) {
+                    // Apply Karaoke Gradient
+                    // Left (Primary Color) -> Right (Faded White)
+                    const p1 = Math.floor(percentDone * 100)
+                    const p2 = Math.min(100, p1 + 5) // Soft edge
+
+                    // We need to set this directly on the element style
+                    activeEl.style.background = `linear-gradient(90deg, ${colors.primary || '#0ff'} ${p1}%, rgba(255,255,255,0.3) ${p2}%)`
+                    activeEl.style.webkitBackgroundClip = 'text'
+                    activeEl.style.webkitTextFillColor = 'transparent'
+                    activeEl.style.transform = 'scale(1.05)'
+                    activeEl.style.filter = `drop-shadow(0 0 10px ${colors.primary}80)`
+                }
+
+                // Reset siblings (Clean up previous active styles if they lag)
+                // Actually React renders CSS classes for inactive, so we only need to worry if we override style attribute.
+                // React will reconcile style={} prop, but we are overwriting it.
+                // We should clean up prev element? 
+                // We can rely on React re-render when activeLineIndex changes to clear style=""?
+                // Probably yes.
+            }
+
+            // Scroll Logic
+            const LINE_HEIGHT = 70 // Updated for larger text + gap
+            const CONTAINER_HEIGHT = contentRef.current.clientHeight
+            let targetScroll = 0
+            if (activeIdx !== -1) {
+                targetScroll = (activeIdx * LINE_HEIGHT) - (CONTAINER_HEIGHT / 2) + (LINE_HEIGHT / 2)
+            }
+
+            // Smooth Scroll
+            const currentScroll = contentRef.current.scrollTop
+            const diff = targetScroll - currentScroll
+            if (Math.abs(diff) > 0.5) {
+                contentRef.current.scrollTop = currentScroll + (diff * 0.1)
+            }
+
+            frameRef.current = requestAnimationFrame(loop)
         }
 
-        if (isPlaying) {
-            frameRef.current = requestAnimationFrame(update)
-        }
+        loop()
+        return () => cancelAnimationFrame(frameRef.current!)
+    }, [isPlaying, track.position, lastPlaybackUpdate, colors.primary])
 
-        return () => {
-            if (frameRef.current) cancelAnimationFrame(frameRef.current)
-        }
-    }, [isPlaying, lines, track.position, lastPlaybackUpdate])
+    const activeLineIdxRef = useRef(-1)
 
     return (
-        <div
-            ref={containerRef}
-            className="no-scrollbar"
-            style={{
-                width: '100%', height: '100%',
-                overflowY: 'scroll',
-                padding: '50vh 0', // Center first/last lines
-                position: 'relative',
-                maskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
-            }}
-        >
-            {lines.map((line, i) => (
-                <div
-                    key={i}
-                    style={{
-                        padding: '12px 20px',
-                        fontSize: '32px',
-                        fontWeight: 700,
-                        textAlign: 'center',
-                        fontFamily: 'Inter, sans-serif',
-                        transition: 'transform 0.3s ease-out, opacity 0.3s ease-out', // CSS transition for transform/opacity but NOT color (handled by loop)
-                        cursor: 'default',
-                        userSelect: 'none'
-                    }}
-                >
-                    {line.text}
+        <div style={{
+            width: '100%', height: '100%', position: 'relative',
+            maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+        }}>
+            <div
+                ref={contentRef}
+                style={{
+                    width: '100%', height: '100%', overflowY: 'hidden',
+                    paddingTop: '50vh', paddingBottom: '50vh'
+                }}
+            >
+                {lines.map((line, i) => {
+                    const isActive = i === activeLineIndex
+                    const isHovered = i === hoverIndex
+
+                    return (
+                        <div
+                            key={i}
+                            onMouseEnter={() => setHoverIndex(i)}
+                            onMouseLeave={() => setHoverIndex(-1)}
+                            onClick={() => handleSeek(line.time)}
+                            style={{
+                                height: '70px', // Matches LINE_HEIGHT logic in loop
+                                width: '100%',
+                                textAlign: 'center',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: isActive ? '36px' : '24px',
+                                fontWeight: isActive ? 800 : 500,
+                                color: isActive ? 'transparent' : 'rgba(255,255,255,0.3)', // Active overridden by loop gradient
+                                cursor: 'pointer',
+                                transition: 'font-size 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s',
+
+                                // Default styles (overwritten by JS loop when active)
+                                background: isActive ? undefined : 'none',
+                                WebkitBackgroundClip: isActive ? undefined : 'none',
+                                WebkitTextFillColor: isActive ? undefined : 'currentcolor',
+                            }}
+                        >
+                            {/* Hover Play Icon */}
+                            {isHovered && !isActive && (
+                                <span style={{ position: 'absolute', left: '10%', fontSize: '20px', color: colors.primary }}>
+                                    ▶
+                                </span>
+                            )}
+
+                            {line.text}
+                        </div>
+                    )
+                })}
+            </div>
+
+            {loading && (
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', opacity: 0.5 }}>
+                    Searching Lyrics...
                 </div>
-            ))}
+            )}
         </div>
     )
 }
