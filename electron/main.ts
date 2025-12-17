@@ -463,7 +463,8 @@ function createWindow() {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      backgroundThrottling: false // Prevent background suspension
+      backgroundThrottling: false, // Prevent background suspension
+      plugins: true, // Enable Widevine DRM for Spotify Web Playback SDK
     }
   })
 
@@ -476,9 +477,10 @@ function createWindow() {
         ...details.responseHeaders,
         'Content-Security-Policy': [
           "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; " +
-          "media-src 'self' https://*.googlevideo.com https://*.youtube.com https://*.ytimg.com blob: data:; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.scdn.co; " +
+          "media-src 'self' https://*.googlevideo.com https://*.youtube.com https://*.ytimg.com https://*.spotify.com https://*.scdn.co blob: data:; " +
           "img-src 'self' https://*.spotify.com https://*.scdn.co https://*.ytimg.com data: blob:; " +
-          "connect-src 'self' https://api.spotify.com https://*.googlevideo.com https://*.youtube.com wss: ws:;"
+          "connect-src 'self' https://api.spotify.com https://accounts.spotify.com https://*.scdn.co https://*.googlevideo.com https://*.youtube.com wss: ws:;"
         ]
       }
     })
