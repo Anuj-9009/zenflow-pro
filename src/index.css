@@ -1,54 +1,496 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+/* ============================================================
+   ZENFLOW "APPLE STANDARD" DESIGN SYSTEM
+   Version: 2.0 - Complete Overhaul
+   ============================================================ */
+
 @import "tailwindcss";
 
-/* theme setup if needed for v4 variables, usually auto-inferred from variables or config */
-@theme {
-    --color-bg: #050510;
-    --font-header: 'Syne', sans-serif;
-    --font-sans: 'Inter', system-ui, sans-serif;
-}
+/* ============================================================
+   DESIGN TOKENS - The Foundation
+   ============================================================ */
 
 :root {
-    --color-bg: #050510;
-    --zen-dark: #050510;
-    --zen-vibrant: #4facfe;
-    /* Default, updates dynamically via JS if needed */
-    --color-glass: rgba(255, 255, 255, 0.05);
-    --glass-border: 1px solid rgba(255, 255, 255, 0.1);
-    --blur-amt: 24px;
+    /* Apple Standard Typography */
+    --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Helvetica Neue", sans-serif;
+    --font-mono: "SF Mono", "Menlo", "Monaco", monospace;
+
+    /* The "ZenFlow" Palette - High Contrast */
+    --bg-core: #050505;
+    /* True Black */
+    --bg-surface: #121212;
+    /* Surface Grey */
+    --bg-elevated: #1a1a1a;
+    /* Elevated Surface */
+    --bg-hover: #222222;
+    /* Hover State */
+
+    /* Accent Colors */
+    --accent: #FFFF00;
+    /* Electric Yellow - Primary */
+    --accent-dim: #CCCC00;
+    /* Dimmed Yellow */
+    --accent-glow: rgba(255, 255, 0, 0.15);
+
+    /* Spotify Green */
+    --spotify: #1DB954;
+    --spotify-dim: #1AA34A;
+
+    /* Text Hierarchy */
+    --text-primary: #FFFFFF;
+    --text-secondary: #999999;
+    --text-tertiary: #666666;
+    --text-disabled: #444444;
+
+    /* Borders */
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-medium: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.15);
+
+    /* Glassmorphism */
+    --glass-bg: rgba(18, 18, 18, 0.75);
+    --glass-blur: blur(24px) saturate(180%);
+    --glass-border: rgba(255, 255, 255, 0.08);
+
+    /* Shadows */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+    --shadow-glow: 0 0 24px var(--accent-glow);
+
+    /* Animation Curves - Apple Physics */
+    --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Spacing Scale */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Border Radius Scale */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-full: 9999px;
+}
+
+/* ============================================================
+   BASE RESET
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
 }
 
 body {
-    background: var(--zen-dark);
-    color: white;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-stack);
+    background-color: var(--bg-core);
+    color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow: hidden;
-    /* Performance: Hardware acceleration */
-    transform: translateZ(0);
-    backface-visibility: hidden;
+    line-height: 1.5;
+    letter-spacing: -0.01em;
 }
 
-/* Global smooth transitions for interactive elements */
-* {
-    -webkit-tap-highlight-color: transparent;
+#root {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
 }
+
+/* ============================================================
+   SCROLLBAR - The Hidden Detail
+   ============================================================ */
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+    transition: background 0.2s var(--ease-smooth);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+}
+
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+}
+
+/* ============================================================
+   TYPOGRAPHY
+   ============================================================ */
+
+h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+}
+
+h2 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+h4 {
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.text-mono {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+}
+
+/* ============================================================
+   GLASS PANELS - The Premium Feel
+   ============================================================ */
+
+.glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+}
+
+.glass-panel-elevated {
+    background: rgba(30, 30, 30, 0.85);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ============================================================
+   BUTTONS - Tactile Feedback
+   ============================================================ */
 
 button,
-a,
 [role="button"] {
-    transition: transform 0.15s ease-out, opacity 0.15s ease-out, background-color 0.2s ease;
-    will-change: transform;
+    font-family: var(--font-stack);
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: all 0.2s var(--ease-out);
+    -webkit-tap-highlight-color: transparent;
 }
 
 button:active,
 [role="button"]:active {
+    transform: scale(0.96);
+}
+
+button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Primary Button (Yellow) */
+.btn-primary {
+    background: var(--accent);
+    color: var(--bg-core);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-full);
+    font-weight: 600;
+}
+
+.btn-primary:hover {
+    background: #E6E600;
+    box-shadow: var(--shadow-glow);
+}
+
+/* Secondary Button */
+.btn-secondary {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-full);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+}
+
+/* Ghost Button */
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+}
+
+.btn-ghost:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* ============================================================
+   CARDS - Song Cards, etc.
+   ============================================================ */
+
+.card {
+    background: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+    padding: var(--space-md);
+    transition: all 0.2s var(--ease-out);
+    cursor: pointer;
+}
+
+.card:hover {
+    background: var(--bg-elevated);
+    border-color: var(--border-medium);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.card:active {
     transform: scale(0.98);
 }
 
-/* Reduce motion for users who prefer it */
+/* Song Card - Specific */
+.song-card {
+    background: var(--bg-surface);
+    border-radius: var(--radius-md);
+    padding: var(--space-sm);
+    transition: transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-smooth);
+    position: relative;
+    overflow: hidden;
+}
+
+.song-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.song-card:active {
+    transform: scale(0.96);
+}
+
+/* ============================================================
+   INPUTS
+   ============================================================ */
+
+input[type="text"],
+input[type="search"] {
+    font-family: var(--font-stack);
+    font-size: 0.95rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    padding: var(--space-sm) var(--space-md);
+    color: var(--text-primary);
+    transition: all 0.2s var(--ease-smooth);
+    outline: none;
+}
+
+input[type="text"]:focus,
+input[type="search"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+input::placeholder {
+    color: var(--text-disabled);
+}
+
+/* ============================================================
+   DJ INTERFACE - CSS Grid Layout
+   ============================================================ */
+
+.dj-interface {
+    display: grid;
+    height: 100%;
+    grid-template-columns: 2fr 1fr 2fr;
+    gap: var(--space-lg);
+    padding: var(--space-lg);
+    box-sizing: border-box;
+}
+
+.deck {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    position: relative;
+    overflow: hidden;
+    padding: var(--space-lg);
+}
+
+.deck-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    filter: blur(40px) brightness(0.3);
+    z-index: 0;
+    transform: scale(1.1);
+}
+
+.deck-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.mixer {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-xl);
+    padding: var(--space-lg);
+    gap: var(--space-md);
+}
+
+/* ============================================================
+   SLIDERS - Pro DJ Style
+   ============================================================ */
+
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-track {
+    background: var(--bg-surface);
+    height: 4px;
+    border-radius: 2px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin-top: -6px;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.15s var(--ease-spring);
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+    transform: scale(0.95);
+}
+
+/* Vertical Slider (Pitch Fader) */
+input[type="range"].vertical {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    height: 120px;
+    width: 40px;
+}
+
+/* ============================================================
+   VU METERS
+   ============================================================ */
+
+.vu-meter {
+    display: flex;
+    gap: 3px;
+    height: 100px;
+    align-items: flex-end;
+}
+
+.vu-bar {
+    width: 8px;
+    background: linear-gradient(to top, #22c55e 0%, #eab308 60%, #ef4444 100%);
+    border-radius: 2px;
+    transition: height 0.05s linear;
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 var(--accent-glow);
+    }
+
+    50% {
+        box-shadow: 0 0 20px 4px var(--accent-glow);
+    }
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-spin {
+    animation: spin 2s linear infinite;
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+
 @media (prefers-reduced-motion: reduce) {
 
     *,
@@ -60,158 +502,23 @@ button:active,
     }
 }
 
-h1,
-h2,
-h3,
-button {
-    font-family: 'Syne', sans-serif;
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
+
+.truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-/* The Magic Karaoke Class */
-.karaoke-text {
-    background-image: linear-gradient(to right, white 50%, rgba(255, 255, 255, 0.3) 50%);
-    background-position: 100% 0;
-    /* Start completely grey */
-    background-size: 200% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    font-family: 'Syne', sans-serif;
-}
-
-.karaoke-text.active {
-    transform: scale(1.05);
-}
-
-/* Custom Utilities - Optimized Glass Panel */
-.glass-panel {
-    @apply bg-white/5 backdrop-blur-3xl border border-white/10;
-    /* Performance: GPU layer + containment */
-    transform: translateZ(0);
-    will-change: opacity, transform;
-    contain: layout style paint;
-}
-
-/* Custom Scrollbar - Yellow/Black Theme (FORCED) */
-::-webkit-scrollbar {
-    width: 8px !important;
-    height: 8px !important;
-    display: block !important;
-}
-
-::-webkit-scrollbar-track {
-    background: #111 !important;
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #FFFF00 0%, #FFD700 100%) !important;
-    border-radius: 4px;
-    border: 1px solid #333;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #FFD700 0%, #FFA500 100%) !important;
-}
-
-/* Firefox scrollbar - Force visible */
-html,
-body,
-* {
-    scrollbar-width: thin !important;
-    scrollbar-color: #FFFF00 #111 !important;
-}
-
-/* ========== VISIBLE UI IMPROVEMENTS ========== */
-
-/* Glowing buttons */
-button:hover,
-[role="button"]:hover {
-    box-shadow: 0 0 20px rgba(255, 255, 0, 0.3) !important;
-}
-
-/* All cards get a subtle glow on hover */
-div[class*="hover:bg-"]:hover,
-div[class*="group"]:hover {
-    box-shadow: 0 4px 24px rgba(255, 255, 255, 0.05) !important;
-}
-
-/* Spotify green buttons get emerald glow */
-button[class*="bg-emerald"]:hover,
-button[class*="bg-[#1DB954]"]:hover {
-    box-shadow: 0 0 24px rgba(16, 185, 129, 0.4) !important;
-}
-
-/* Smooth page transitions */
-[class*="overflow-y-auto"],
-[class*="overflow-auto"] {
-    scroll-behavior: smooth;
-}
-
-/* --- PRO DJ SLIDERS (Hardware Style) --- */
-
-/* 1. RESET DEFAULT STYLES */
-input[type=range] {
-    -webkit-appearance: none;
-    /* Hides the slider so that custom slider can be made */
-    width: 100%;
-    background: transparent;
-    /* Otherwise white in Chrome */
-}
-
-input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-}
-
-input[type=range]:focus {
-    outline: none;
-}
-
-/* 2. THE TRACK (The line behind the knob) */
-input[type=range]::-webkit-slider-runnable-track {
-    width: 100%;
-    height: 6px;
-    cursor: pointer;
-    background: #27272a;
-    /* Zinc-800 */
-    border-radius: 999px;
-    border: 1px solid #3f3f46;
-    /* Zinc-700 */
-}
-
-/* 3. THE THUMB (The Knob itself) */
-input[type=range]::-webkit-slider-thumb {
-    height: 16px;
-    width: 16px;
-    border-radius: 50%;
-    background: #e4e4e7;
-    /* Zinc-200 */
-    cursor: pointer;
-    -webkit-appearance: none;
-    margin-top: -6px;
-    /* You need to specify a margin in Chrome, but in Firefox and IE it is automatic */
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-    /* Depth */
-    border: 2px solid #000;
-    /* Contrast ring */
-    transition: all 0.1s;
-}
-
-/* Hover Effect */
-input[type=range]:hover::-webkit-slider-thumb {
-    background: #10b981;
-    /* Emerald-500 */
-    transform: scale(1.1);
-}
-
-/* 4. VERTICAL SLIDERS (For Volume Faders) */
-.vertical-slider {
-    writing-mode: bt-lr;
-    /* IE */
-    -webkit-appearance: slider-vertical;
-    /* Webkit */
-    width: 8px;
-    height: 100%;
-    padding: 0 5px;
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
 }
