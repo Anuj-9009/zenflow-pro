@@ -5,22 +5,41 @@ import { usePlayer } from '../context/PlayerContext';
 const CLIENT_ID = "960d4c9b0aa240cf8b6c3dd41addc0d5";
 const REDIRECT_URI = "http://127.0.0.1:8888/callback";
 
-// --- THE FIX: OFFICIAL SPOTIFY ADDRESSES ---
+// --- OFFICIAL SPOTIFY ENDPOINTS ---
 const AUTH_ENDPOINT = "https://accounts.spotify.com/authorize";
-const API_ENDPOINT = "https://api.spotify.com/v1/me/tracks"; // Liked Songs
+const API_ENDPOINT = "https://api.spotify.com/v1/me/tracks";
+
+// --- PKCE HELPERS ---
+function generateRandomString(length: number): string {
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const values = crypto.getRandomValues(new Uint8Array(length));
+    return values.reduce((acc, x) => acc + possible[x % possible.length], "");
+}
+
+async function sha256(plain: string): Promise<ArrayBuffer> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(plain);
+    return window.crypto.subtle.digest('SHA-256', data);
+}
+
+function base64encode(input: ArrayBuffer): string {
+    return btoa(String.fromCharCode(...new Uint8Array(input)))
+        .replace(/=/g, '')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_');
+}
 
 const SpotifyLoader = () => {
     const { setLibraryTracks, setSpotifyToken } = usePlayer();
     const [status, setStatus] = useState("IDLE");
 
-    // 1. Listen for Token from Backend (Your local server)
+    // 1. Listen for the ACCESS TOKEN from Backend (exchange happens in main process)
     useEffect(() => {
         const electron = (window as any).electron;
-        // We use the safe 'window.onSpotifyCode' bridge from preload.ts
-        // instead of ipcRenderer directly (which is sandbox-blocked)
         if (electron && electron.window) {
-            electron.window.onSpotifyCode((token: string) => {
-                console.log("Token Received via IPC!");
+            // Listen for actual token (after backend does the PKCE exchange)
+            electron.window.onSpotifyToken((token: string) => {
+                console.log("Access Token Received from Backend!");
                 loadTracks(token);
             });
         }
@@ -31,7 +50,6 @@ const SpotifyLoader = () => {
         setSpotifyToken(token);
         window.localStorage.setItem("token", token);
 
-        // Fetch User's Liked Songs
         fetch(API_ENDPOINT + "?limit=50", {
             headers: { Authorization: `Bearer ${token}` }
         })
@@ -58,15 +76,38 @@ const SpotifyLoader = () => {
             });
     };
 
-    const handleLogin = () => {
-        setStatus("WAITING IN BROWSER...");
+    const handleLogin = async () => {
+        setStatus("PREPARING...");
+
+        // Generate PKCE codes
+        const codeVerifier = generateRandomString(64);
+        const hashed = await sha256(codeVerifier);
+        const codeChallenge = base64encode(hashed);
+
+        // Store verifier in backend (main process) for later exchange
+        const electron = (window as any).electron;
+        if (electron && electron.window) {
+            await electron.window.storeCodeVerifier(codeVerifier);
+        }
+
         const scopes = ["user-library-read"];
 
-        // Construct the OFFICIAL Auth URL
-        const url = `${AUTH_ENDPOINT}?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&show_dialog=true&scope=${encodeURIComponent(scopes.join(" "))}`;
+        // Build URL with PKCE parameters
+        const params = new URLSearchParams({
+            client_id: CLIENT_ID,
+            response_type: 'code',
+            redirect_uri: REDIRECT_URI,
+            scope: scopes.join(' '),
+            code_challenge_method: 'S256',
+            code_challenge: codeChallenge,
+            show_dialog: 'true'
+        });
 
-        // Open in System Browser using Shell (Safest for Desktop)
-        const electron = (window as any).electron;
+        const url = `${AUTH_ENDPOINT}?${params.toString()}`;
+
+        setStatus("WAITING IN BROWSER...");
+
+        // Open in System Browser
         if (electron && electron.shell) {
             electron.shell.openExternal(url);
         } else {
@@ -88,16 +129,19 @@ const SpotifyLoader = () => {
                     </button>
                 )}
 
-                {status === "WAITING IN BROWSER..." && (
+                {(status === "WAITING IN BROWSER..." || status === "SYNCING..." || status === "PREPARING...") && (
                     <div className="text-xs text-zinc-500 animate-pulse">
-                        Check your browser window...
+                        {status}
                     </div>
                 )}
 
                 {status.startsWith("ERROR") && (
-                    <button onClick={() => setStatus("IDLE")} className="mt-4 text-xs text-red-500 underline">
-                        Try Again
-                    </button>
+                    <div className="flex flex-col items-center">
+                        <p className="text-red-500 text-sm mb-2">{status}</p>
+                        <button onClick={() => setStatus("IDLE")} className="px-4 py-2 bg-zinc-800 rounded text-xs text-white hover:bg-zinc-700">
+                            Try Again
+                        </button>
+                    </div>
                 )}
             </div>
         </div>

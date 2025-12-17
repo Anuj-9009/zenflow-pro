@@ -20,80 +20,130 @@ const execAsync = promisify(exec)
 let mainWindow: BrowserWindowType | null = null
 let callbackServer: http.Server | null = null
 
-// Start a specific HTTP server for the Loopback Auth Flow
+// Store code verifier for PKCE exchange
+let storedCodeVerifier: string | null = null
+
+// Start a specific HTTP server for the Loopback Auth Flow (PKCE)
 function startAuthServer() {
   if (callbackServer) return // Already running
 
-  callbackServer = http.createServer((req, res) => {
-    // Parse URL manually since query might be needed
-    const q = new URL(req.url || '', 'http://localhost:8888')
+  callbackServer = http.createServer(async (req, res) => {
+    // Parse URL to get query parameters
+    const q = new URL(req.url || '', 'http://127.0.0.1:8888')
 
-    // 1. Handle the callback from Spotify (contains #access_token)
+    // 1. Handle the callback from Spotify
     if (q.pathname === '/callback') {
-      res.writeHead(200, { 'Content-Type': 'text/html' })
-      res.end(`
-        <html>
-          <body style="background-color: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px;">
-            <h1 id="status">Processing...</h1>
-            <p id="details">Please wait.</p>
-            <script>
-              const hash = window.location.hash.substring(1);
-              const params = new URLSearchParams(hash);
-              
-              const token = params.get('access_token');
-              const error = params.get('error');
+      // PKCE flow: code comes in query params (?code=xxx), not hash
+      const code = q.searchParams.get('code')
+      const error = q.searchParams.get('error')
 
-              if (error) {
-                document.getElementById('status').innerText = "Login Failed";
-                document.getElementById('status').style.color = "#ff5555";
-                document.getElementById('details').innerHTML = "Spotify Error Code: <strong>" + error + "</strong><br><br>Tip: If the error is 'access_denied', go to your Spotify Dashboard -> Users Management and add your email.";
-              } 
-              else if (token) {
-                document.getElementById('status').innerText = "Success!";
-                document.getElementById('status').style.color = "#1db954";
-                
-                // Send back to our server to capture it in Node.js
-                fetch('/token?value=' + token)
-                  .then(() => {
-                     document.getElementById('details').innerText = "Closing window...";
-                     setTimeout(() => window.close(), 1000);
-                  })
-                  .catch(err => {
-                     document.getElementById('details').innerText = "Error sending token to app.";
-                  });
-              } else {
-                document.getElementById('status').innerText = "Unknown State";
-                document.getElementById('details').innerText = "No token or error found in URL. Check Dashboard Config.";
-              }
-            </script>
-          </body>
-        </html>
-      `)
-    }
-    // 2. Capture the token sent by the client-side script above
-    else if (q.pathname === '/token') {
-      const token = q.searchParams.get('value')
-      console.log('[Auth Server] Token received:', token?.substring(0, 10) + '...')
+      if (error) {
+        res.writeHead(200, { 'Content-Type': 'text/html' })
+        res.end(`
+          <html>
+            <body style="background-color: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px;">
+              <h1 style="color: #ff5555;">Login Failed</h1>
+              <p>Spotify Error Code: <strong>${error}</strong></p>
+              <p style="color: #888;">Tip: If 'access_denied', add your email to Spotify Dashboard -> Users Management</p>
+            </body>
+          </html>
+        `)
+      } else if (code && storedCodeVerifier) {
+        console.log('[Auth Server] Authorization code received! Exchanging for token...')
 
-      if (token && mainWindow) {
-        // Send to Renderer via IPC (matches preload.ts onSpotifyCode)
-        mainWindow.webContents.send('spotify-code', token)
-        mainWindow.focus() // Bring app to front
+        // Exchange code for token in main process (no CORS issues)
+        try {
+          const token = await exchangeCodeForToken(code, storedCodeVerifier)
+          storedCodeVerifier = null // Clear after use
+
+          if (token && mainWindow) {
+            mainWindow.webContents.send('spotify-token', token) // Send actual token
+            mainWindow.focus()
+          }
+
+          res.writeHead(200, { 'Content-Type': 'text/html' })
+          res.end(`
+            <html>
+              <body style="background-color: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px;">
+                <h1 style="color: #1db954;">Success!</h1>
+                <p>Login complete. You can close this window.</p>
+                <script>setTimeout(() => window.close(), 1500);</script>
+              </body>
+            </html>
+          `)
+        } catch (err: any) {
+          console.error('[Auth Server] Token exchange failed:', err)
+          res.writeHead(200, { 'Content-Type': 'text/html' })
+          res.end(`
+            <html>
+              <body style="background-color: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px;">
+                <h1 style="color: #ff5555;">Token Exchange Failed</h1>
+                <p>${err.message}</p>
+              </body>
+            </html>
+          `)
+        }
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/html' })
+        res.end(`
+          <html>
+            <body style="background-color: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px;">
+              <h1 style="color: #ff5555;">Unknown State</h1>
+              <p>No code or verifier found. Please try logging in again.</p>
+            </body>
+          </html>
+        `)
       }
-
-      res.writeHead(200)
-      res.end('OK')
     }
   })
 
-  callbackServer.listen(8888, () => {
-    console.log('[Auth Server] Listening on http://localhost:8888')
+  callbackServer.listen(8888, '127.0.0.1', () => {
+    console.log('[Auth Server] Listening on http://127.0.0.1:8888')
   })
 
   callbackServer.on('error', (err: any) => {
     console.error('[Auth Server] Error:', err)
   })
 }
+
+// Exchange authorization code for access token (runs in Node.js - no CORS)
+async function exchangeCodeForToken(code: string, codeVerifier: string): Promise<string> {
+  const CLIENT_ID = "960d4c9b0aa240cf8b6c3dd41addc0d5"
+  const REDIRECT_URI = "http://127.0.0.1:8888/callback"
+  const TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token"
+
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    grant_type: 'authorization_code',
+    code: code,
+    redirect_uri: REDIRECT_URI,
+    code_verifier: codeVerifier,
+  })
+
+  const response = await fetch(TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  })
+
+  const data = await response.json() as any
+
+  if (data.access_token) {
+    console.log('[Auth Server] Token obtained successfully!')
+    return data.access_token
+  } else {
+    throw new Error(data.error_description || data.error || 'Token exchange failed')
+  }
+}
+
+// IPC handler to store code verifier before auth
+ipcMain.handle('store-code-verifier', (_event, verifier: string) => {
+  storedCodeVerifier = verifier
+  console.log('[IPC] Code verifier stored')
+  return true
+})
 
 // ======================
 // DEEP LINK HANDLING (zenflow://)

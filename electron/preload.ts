@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('electron', {
     close: () => ipcRenderer.invoke('window:close'),
     toggleMiniPlayer: (isMini: boolean) => ipcRenderer.invoke('window:toggleMiniPlayer', isMini),
     onSpotifyCode: (callback: (code: string) => void) => ipcRenderer.on('spotify-code', (_event, code) => callback(code)),
+    onSpotifyToken: (callback: (token: string) => void) => ipcRenderer.on('spotify-token', (_event, token) => callback(token)),
+    storeCodeVerifier: (verifier: string) => ipcRenderer.invoke('store-code-verifier', verifier),
     resizeWidget: (width: number, height: number) => ipcRenderer.invoke('window:resizeWidget', { width, height }),
     onSyncState: (callback: (state: any) => void) => ipcRenderer.on('sync-state', (_event, state) => callback(state)),
     sendSyncState: (state: any) => ipcRenderer.invoke('window:sendSyncState', state),
