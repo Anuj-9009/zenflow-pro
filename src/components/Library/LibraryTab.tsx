@@ -2,14 +2,13 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { usePlayer } from '../../context/PlayerContext';
 import { useContextMenu, TrackContextMenu } from '../../hooks/useContextMenu';
 import { fuzzySearchTracks, debounce } from '../../utils/searchUtils';
-import { djEngine } from '../../audio/DJEngine';
 
 interface LibraryTabProps {
     isSearchMode?: boolean;
 }
 
 export const LibraryTab: React.FC<LibraryTabProps> = ({ isSearchMode = false }) => {
-    const { libraryTracks, loadTrack } = usePlayer();
+    const { libraryTracks, playTrack, loadTrack, isSpotifyReady } = usePlayer();
     const [searchTerm, setSearchTerm] = useState('');
     const { menuState, openMenu, closeMenu } = useContextMenu();
 
@@ -31,22 +30,14 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({ isSearchMode = false }) 
     // Handle loading to DJ decks
     const handleLoadToDeck = useCallback(async (deck: 'A' | 'B', track: any) => {
         console.log(`🎛️ Loading "${track.title}" to Deck ${deck}`);
-
-        // Load via DJ Engine
-        if (track.url) {
-            await djEngine.loadTrack(deck, track.url);
-        } else {
-            // Use React context for non-audio tracks
-            loadTrack(track, deck);
-        }
+        await loadTrack(track, deck);
     }, [loadTrack]);
 
-    // Handle left-click (play immediately)
-    const handlePlayNow = useCallback((track: any) => {
+    // Handle left-click (play immediately via Spotify SDK)
+    const handlePlayNow = useCallback(async (track: any) => {
         console.log(`▶️ Playing Now: "${track.title}"`);
-        loadTrack(track, 'A');
-        djEngine.play('A');
-    }, [loadTrack]);
+        await playTrack(track);
+    }, [playTrack]);
 
     // Handle right-click (context menu)
     const handleRightClick = useCallback((e: React.MouseEvent, track: any) => {
@@ -55,11 +46,19 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({ isSearchMode = false }) 
 
     return (
         <div className="p-8 pb-32 h-full overflow-y-auto">
-            <h2 className="text-3xl font-header font-bold text-white mb-6">
+            <h2 className="text-3xl font-header font-bold text-white mb-4">
                 {isSearchMode ? 'Global Search' : 'Your Library'}
             </h2>
 
-            {/* SEARCH BAR - Now with Fuzzy Search */}
+            {/* SDK Status Indicator */}
+            <div className="mb-4 flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${isSpotifyReady ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}></span>
+                <span className="text-xs text-zinc-500">
+                    {isSpotifyReady ? 'Spotify Ready' : 'Connecting to Spotify...'}
+                </span>
+            </div>
+
+            {/* SEARCH BAR - Fuzzy Search */}
             <div className="mb-8">
                 <input
                     type="text"
@@ -96,23 +95,47 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({ isSearchMode = false }) 
 
                             {/* HOVER OVERLAY */}
                             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 backdrop-blur-sm">
-                                {track.url ? (
+                                {/* Spotify URI = playable */}
+                                {track.uri ? (
+                                    <>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handlePlayNow(track); }}
+                                            className="px-4 py-2 bg-green-500 text-black text-xs font-bold rounded-full hover:scale-105 hover:bg-green-400 transition-all shadow-lg"
+                                        >
+                                            ▶ PLAY
+                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleLoadToDeck('A', track); }}
+                                                className="px-3 py-1 bg-yellow-400 text-black text-[10px] font-bold rounded-full hover:scale-105 transition-all"
+                                            >
+                                                DECK A
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleLoadToDeck('B', track); }}
+                                                className="px-3 py-1 bg-zinc-200 text-black text-[10px] font-bold rounded-full hover:scale-105 transition-all"
+                                            >
+                                                DECK B
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : track.url ? (
                                     <>
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleLoadToDeck('A', track); }}
-                                            className="px-4 py-2 bg-yellow-400 text-black text-xs font-bold rounded-full hover:scale-105 hover:bg-yellow-300 transition-all shadow-lg"
+                                            className="px-4 py-2 bg-yellow-400 text-black text-xs font-bold rounded-full hover:scale-105 transition-all shadow-lg"
                                         >
                                             LOAD A
                                         </button>
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleLoadToDeck('B', track); }}
-                                            className="px-4 py-2 bg-zinc-200 text-black text-xs font-bold rounded-full hover:scale-105 hover:bg-white transition-all shadow-lg"
+                                            className="px-4 py-2 bg-zinc-200 text-black text-xs font-bold rounded-full hover:scale-105 transition-all shadow-lg"
                                         >
                                             LOAD B
                                         </button>
                                     </>
                                 ) : (
-                                    <span className="text-[10px] text-red-400 font-mono bg-red-900/50 px-2 py-1 rounded">DRM LOCKED</span>
+                                    <span className="text-[10px] text-red-400 font-mono bg-red-900/50 px-2 py-1 rounded">NO AUDIO</span>
                                 )}
                             </div>
                         </div>
@@ -125,7 +148,7 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({ isSearchMode = false }) 
 
                         {/* Right-click hint */}
                         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <span className="text-[8px] text-zinc-500 bg-zinc-900/80 px-1.5 py-0.5 rounded">Right-click for options</span>
+                            <span className="text-[8px] text-zinc-500 bg-zinc-900/80 px-1.5 py-0.5 rounded">Right-click ➤</span>
                         </div>
                     </div>
                 ))}
