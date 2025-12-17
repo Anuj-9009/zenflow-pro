@@ -79,8 +79,8 @@ export default function DJView() {
     }
 
     return (
-        <div className="h-full w-full flex bg-bg text-white font-sans overflow-hidden relative">
-            <div className="absolute inset-0 bg-gradient-to-b from-[#050510] to-[#0a0a1a] -z-10" />
+        <div className="dj-interface">
+            <div className="absolute inset-0 bg-gradient-to-b from-[var(--bg-core)] to-[var(--bg-elevated)] -z-10" />
 
             {/* DECK A */}
             <Deck
@@ -93,12 +93,14 @@ export default function DJView() {
             />
 
             {/* CENTER MIXER */}
-            <DJMixer
-                eqA={eqA} eqB={eqB}
-                setEqA={setEqA} setEqB={setEqB}
-                crossfader={crossfader} setCrossfader={setCrossfader}
-                transitionState={transitionState} triggerHandoff={triggerHandoff}
-            />
+            <div className="mixer-container" style={{ display: 'contents' }}>
+                <DJMixer
+                    eqA={eqA} eqB={eqB}
+                    setEqA={setEqA} setEqB={setEqB}
+                    crossfader={crossfader} setCrossfader={setCrossfader}
+                    transitionState={transitionState} triggerHandoff={triggerHandoff}
+                />
+            </div>
 
             {/* DECK B */}
             <Deck

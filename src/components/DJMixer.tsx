@@ -87,7 +87,7 @@ export const DJMixer: React.FC<DJMixerProps> = ({
     }, [masterVolume])
 
     return (
-        <div className="h-full flex flex-col gap-4 py-6 glass-panel relative z-20 w-[400px]">
+        <div className="mixer w-full h-full justify-between">
 
             {/* === MASTER VOLUME (Top) === */}
             <div className="flex justify-center items-center gap-4 pb-4 border-b border-white/5">

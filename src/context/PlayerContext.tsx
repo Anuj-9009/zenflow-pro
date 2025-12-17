@@ -38,6 +38,7 @@ interface PlayerContextType {
 
     // Actions
     togglePlay: () => Promise<void>
+    toggleDeck: (deckId: 'A' | 'B') => Promise<void>
     loadTrack: (track: Track, deckId: 'A' | 'B') => Promise<void>
     playTrack: (track: Track) => Promise<void> // New: Play directly via Spotify
     seek: (positionMs: number) => void
@@ -168,6 +169,13 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // Spotify tracks go to SDK (Deck A = main player)
         if (track.uri && track.uri.startsWith('spotify:') && spotifyToken) {
             await playSpotifyTrack(track.uri, spotifyToken)
+
+            // CRITICAL: Update DJ Engine state for visuals even if audio is external
+            const state = deckId === 'A' ? djEngine.stateA : djEngine.stateB
+            state.track = track.title
+            state.bpm = track.bpm || 120
+            state.duration = track.duration ? track.duration / 1000 : 0
+            state.isPlaying = true // Optimistic
             return
         }
 
@@ -197,6 +205,29 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, [spotifyToken])
 
     /**
+     * Toggle Deck Playback (Routes to Spotify or Tone.js)
+     */
+    const toggleDeck = useCallback(async (deckId: 'A' | 'B') => {
+        const track = deckId === 'A' ? deckA : deckB
+
+        // If Spotify Track on Deck A
+        if (deckId === 'A' && track?.uri?.startsWith('spotify:')) {
+            if (spotifyPlayer) spotifyToggle()
+
+            // Sync visual state
+            djEngine.stateA.isPlaying = !djEngine.stateA.isPlaying
+        } else {
+            // Local / DJ Engine Track
+            const state = deckId === 'A' ? djEngine.stateA : djEngine.stateB
+            if (state.isPlaying) {
+                djEngine.pause(deckId)
+            } else {
+                djEngine.play(deckId)
+            }
+        }
+    }, [deckA, deckB, spotifyPlayer, spotifyToggle])
+
+    /**
      * Seek to position
      */
     const seek = useCallback((positionMs: number) => {
@@ -222,6 +253,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             duration: spotifyDuration,
             masterBpm, setMasterBpm,
             togglePlay,
+            toggleDeck, // Exposed
             loadTrack,
             playTrack,
             seek,

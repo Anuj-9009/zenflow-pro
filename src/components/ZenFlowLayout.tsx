@@ -136,10 +136,7 @@ export const ZenFlowLayout = () => {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className="w-screen h-screen overflow-hidden relative font-sans text-white transition-colors duration-1000 ease-in-out"
-            style={{
-                background: `radial-gradient(circle at 20% 20%, ${colors.background} 0%, #050508 80%)`
-            }}
+            className="w-screen h-screen overflow-hidden relative"
         >
             {/* z-0: Background Layers */}
             <div className="absolute inset-0 z-0 pointer-events-none opacity-50">
@@ -162,11 +159,11 @@ export const ZenFlowLayout = () => {
                         ${(viewState === 'nowplaying' || viewState === 'lyrics') ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100 pointer-events-auto'}
                     `}
                 >
-                    <div className="h-full z-30 relative shadow-2xl">
+                    <div className="h-full z-30 relative shadow-2xl glass-panel-elevated m-4 rounded-2xl overflow-hidden">
                         <Sidebar activeTab={viewState} onTabChange={(t) => setViewState(t as ViewState)} />
                     </div>
 
-                    <div className="flex-1 p-5 overflow-y-auto z-20">
+                    <div className="flex-1 overflow-y-auto z-20 relative">
                         {renderContent()}
                     </div>
                 </div>
