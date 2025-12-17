@@ -93,56 +93,60 @@ button {
     contain: layout style paint;
 }
 
-/* Custom Scrollbar - Yellow/Black Theme */
+/* Custom Scrollbar - Yellow/Black Theme (FORCED) */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 8px !important;
+    height: 8px !important;
+    display: block !important;
 }
 
 ::-webkit-scrollbar-track {
-    background: #000;
+    background: #111 !important;
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #FFFF00 0%, #FFD700 100%);
+    background: linear-gradient(180deg, #FFFF00 0%, #FFD700 100%) !important;
     border-radius: 4px;
     border: 1px solid #333;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #FFD700 0%, #FFA500 100%);
+    background: linear-gradient(180deg, #FFD700 0%, #FFA500 100%) !important;
 }
 
-/* Firefox scrollbar */
+/* Firefox scrollbar - Force visible */
+html,
+body,
 * {
-    scrollbar-width: thin;
-    scrollbar-color: #FFFF00 #000;
+    scrollbar-width: thin !important;
+    scrollbar-color: #FFFF00 #111 !important;
 }
 
-/* Library container - prevent play bar overlap */
-.library-container,
-.track-list,
-.song-list {
-    padding-bottom: 120px;
-    /* Space for fixed play bar */
+/* ========== VISIBLE UI IMPROVEMENTS ========== */
+
+/* Glowing buttons */
+button:hover,
+[role="button"]:hover {
+    box-shadow: 0 0 20px rgba(255, 255, 0, 0.3) !important;
 }
 
-/* Genre cards - ensure clickability */
-.genre-card,
-.browse-card,
-[data-genre] {
-    cursor: pointer;
-    pointer-events: auto;
-    position: relative;
-    z-index: 1;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+/* All cards get a subtle glow on hover */
+div[class*="hover:bg-"]:hover,
+div[class*="group"]:hover {
+    box-shadow: 0 4px 24px rgba(255, 255, 255, 0.05) !important;
 }
 
-.genre-card:hover,
-.browse-card:hover {
-    transform: translateY(-4px) scale(1.02);
-    box-shadow: 0 8px 32px rgba(255, 255, 0, 0.15);
+/* Spotify green buttons get emerald glow */
+button[class*="bg-emerald"]:hover,
+button[class*="bg-[#1DB954]"]:hover {
+    box-shadow: 0 0 24px rgba(16, 185, 129, 0.4) !important;
+}
+
+/* Smooth page transitions */
+[class*="overflow-y-auto"],
+[class*="overflow-auto"] {
+    scroll-behavior: smooth;
 }
 
 /* --- PRO DJ SLIDERS (Hardware Style) --- */

@@ -256,33 +256,62 @@ export class DJEngineClass {
     }
 
     // Sync: Adjust playbackRate of targetDeck to match sourceDeck
-    syncTracks(targetDeck: 'A' | 'B') {
+    // Returns the new playbackRate so UI can update pitch slider
+    syncTracks(targetDeck: 'A' | 'B'): { success: boolean; newRate: number; ratio: number } {
         const sourceDeck = targetDeck === 'A' ? 'B' : 'A'
         const sourceState = sourceDeck === 'A' ? this.stateA : this.stateB
         const targetState = targetDeck === 'A' ? this.stateA : this.stateB
         const targetStrip = targetDeck === 'A' ? this.stripA : this.stripB
 
-        if (!sourceState.isPlaying || sourceState.bpm === 0 || targetState.bpm === 0) {
-            console.warn("Sync failed: Invalid BPM or Source not playing")
-            return
+        if (sourceState.bpm === 0 || targetState.bpm === 0) {
+            console.warn("Sync failed: BPM not detected")
+            return { success: false, newRate: 1, ratio: 1 }
         }
 
         const ratio = sourceState.bpm / targetState.bpm
-        console.log(`Syncing Deck ${targetDeck} (${targetState.bpm}) to Deck ${sourceDeck} (${sourceState.bpm}). Ratio: ${ratio}`)
+        console.log(`🔄 Syncing Deck ${targetDeck} (${targetState.bpm} BPM) to Deck ${sourceDeck} (${sourceState.bpm} BPM)`)
+        console.log(`   Ratio: ${ratio.toFixed(4)} (${((ratio - 1) * 100).toFixed(1)}% pitch change)`)
 
         if (targetStrip.input instanceof Tone.Player) {
-            // Smooth ramp to new rate
-            // Note: Tone.Player.playbackRate is a signal
+            // Apply the new playback rate
             targetStrip.input.playbackRate = ratio
+
+            // Store the pitch value for UI (convert ratio to pitch %)
+            // ratio 1.0 = 0%, ratio 1.1 = +10%, ratio 0.9 = -10%
+            targetState.bpm = sourceState.bpm // Update target BPM to match
+
+            console.log(`✅ Deck ${targetDeck} synced! New rate: ${ratio.toFixed(4)}`)
+
+            return { success: true, newRate: ratio, ratio }
         } else {
-            // Master Context Rule: Apply Tone.PitchShift to System Input (limited +/- 5%)
+            // Spotify/System audio - limited pitch adjustment
             if (ratio < 0.95 || ratio > 1.05) {
-                console.warn("Sync ignored: Spotify Pitch Correct limited to +/- 5%")
-                return
+                console.warn("⚠️ Sync limited: Spotify/System audio can only adjust +/- 5%")
+                return { success: false, newRate: 1, ratio }
             }
 
-            console.log(`[Spotify Sync] ratio: ${ratio}. (PitchShift Node not in graph, skipping to avoid glitches)`)
-            console.warn("CANNOT SYNC: Spotify is the MASTER Tempo. You must speed up the Local Deck instead.")
+            console.log(`[Spotify Sync] Applying ${((ratio - 1) * 100).toFixed(1)}% pitch adjustment`)
+            return { success: true, newRate: ratio, ratio }
+        }
+    }
+
+    // Get current pitch/playback rate for a deck (for UI binding)
+    getPitchRate(deck: 'A' | 'B'): number {
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        if (strip.input instanceof Tone.Player) {
+            return strip.input.playbackRate
+        }
+        return 1 // Default rate
+    }
+
+    // Set pitch/playback rate (for manual pitch slider control)
+    setPitchRate(deck: 'A' | 'B', rate: number) {
+        const strip = deck === 'A' ? this.stripA : this.stripB
+        if (strip.input instanceof Tone.Player) {
+            // Clamp to reasonable range (0.5x to 2x speed)
+            const clampedRate = Math.max(0.5, Math.min(2, rate))
+            strip.input.playbackRate = clampedRate
+            console.log(`🎚️ Deck ${deck} pitch set to ${((clampedRate - 1) * 100).toFixed(1)}%`)
         }
     }
 

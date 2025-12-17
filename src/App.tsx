@@ -2,6 +2,7 @@ import React from 'react';
 import { PlayerProvider } from './context/PlayerContext';
 import SpotifyLoader from './components/SpotifyLoader';
 import ZenFlowLayout from './components/ZenFlowLayout';
+import { useAudioUnlock } from './hooks/useAudioUnlock';
 
 // --- THE ERROR TRAP (Stops White Screen) ---
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
@@ -40,13 +41,25 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     }
 }
 
+// --- APP WRAPPER WITH AUDIO UNLOCK ---
+const AppContent = () => {
+    // Priority Alpha: Unlock audio on first user interaction
+    useAudioUnlock();
+
+    return (
+        <>
+            <SpotifyLoader />
+            <ZenFlowLayout />
+        </>
+    );
+};
+
 // --- THE MAIN APP ---
 const App = () => {
     return (
         <ErrorBoundary>
             <PlayerProvider>
-                <SpotifyLoader />
-                <ZenFlowLayout />
+                <AppContent />
             </PlayerProvider>
         </ErrorBoundary>
     );

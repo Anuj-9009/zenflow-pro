@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { usePlayer } from '../../context/PlayerContext';
+import { useContextMenu, TrackContextMenu } from '../../hooks/useContextMenu';
+import { fuzzySearchTracks, debounce } from '../../utils/searchUtils';
+import { djEngine } from '../../audio/DJEngine';
 
 interface LibraryTabProps {
     isSearchMode?: boolean;
@@ -8,20 +11,47 @@ interface LibraryTabProps {
 export const LibraryTab: React.FC<LibraryTabProps> = ({ isSearchMode = false }) => {
     const { libraryTracks, loadTrack } = usePlayer();
     const [searchTerm, setSearchTerm] = useState('');
+    const { menuState, openMenu, closeMenu } = useContextMenu();
 
-    // --- NUCLEAR FIX: AGGRESSIVE SAFETY CHECKS ---
-    // 1. Force 'safeTracks' to be an array, no matter what.
+    // Force 'safeTracks' to be an array
     const safeTracks = Array.isArray(libraryTracks) ? libraryTracks : [];
 
-    // 2. Filter safely.
-    const filteredTracks = safeTracks.filter(track => {
-        // If track data is corrupt, skip it safely
-        if (!track || !track.title) return false;
-        return (
-            track.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            track.artist.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    });
+    // Fuzzy search with Fuse.js
+    const filteredTracks = useMemo(() => {
+        if (!searchTerm.trim()) return safeTracks;
+        return fuzzySearchTracks(safeTracks, searchTerm);
+    }, [safeTracks, searchTerm]);
+
+    // Debounced search handler (300ms)
+    const handleSearchChange = useMemo(
+        () => debounce((value: string) => setSearchTerm(value), 300),
+        []
+    );
+
+    // Handle loading to DJ decks
+    const handleLoadToDeck = useCallback(async (deck: 'A' | 'B', track: any) => {
+        console.log(`🎛️ Loading "${track.title}" to Deck ${deck}`);
+
+        // Load via DJ Engine
+        if (track.url) {
+            await djEngine.loadTrack(deck, track.url);
+        } else {
+            // Use React context for non-audio tracks
+            loadTrack(track, deck);
+        }
+    }, [loadTrack]);
+
+    // Handle left-click (play immediately)
+    const handlePlayNow = useCallback((track: any) => {
+        console.log(`▶️ Playing Now: "${track.title}"`);
+        loadTrack(track, 'A');
+        djEngine.play('A');
+    }, [loadTrack]);
+
+    // Handle right-click (context menu)
+    const handleRightClick = useCallback((e: React.MouseEvent, track: any) => {
+        openMenu(e, track);
+    }, [openMenu]);
 
     return (
         <div className="p-8 pb-32 h-full overflow-y-auto">
@@ -29,14 +59,14 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({ isSearchMode = false }) 
                 {isSearchMode ? 'Global Search' : 'Your Library'}
             </h2>
 
-            {/* SEARCH BAR */}
+            {/* SEARCH BAR - Now with Fuzzy Search */}
             <div className="mb-8">
                 <input
                     type="text"
-                    placeholder="Search tracks..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full max-w-xl bg-zinc-900 border border-zinc-800 rounded-full py-3 px-6 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600"
+                    placeholder="Search tracks... (fuzzy matching enabled)"
+                    defaultValue=""
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="w-full max-w-xl bg-zinc-900 border border-zinc-800 rounded-full py-3 px-6 text-white outline-none focus:border-yellow-500 transition-colors placeholder:text-zinc-600"
                 />
             </div>
 
@@ -50,8 +80,12 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({ isSearchMode = false }) 
             {/* GRID */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                 {filteredTracks.map((track, index) => (
-                    <div key={track.id || index} className="group bg-zinc-900 border border-zinc-800 p-4 rounded-xl hover:bg-zinc-800 transition-all relative">
-
+                    <div
+                        key={track.id || index}
+                        className="group bg-zinc-900 border border-zinc-800 p-4 rounded-xl hover:bg-zinc-800 transition-all relative cursor-pointer"
+                        onClick={() => handlePlayNow(track)}
+                        onContextMenu={(e) => handleRightClick(e, track)}
+                    >
                         {/* IMAGE */}
                         <div className="aspect-square bg-black rounded-lg mb-4 overflow-hidden relative shadow-lg group-hover:shadow-2xl transition-shadow">
                             <img
@@ -60,12 +94,22 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({ isSearchMode = false }) 
                                 className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                             />
 
-                            {/* HOVER BUTTONS */}
+                            {/* HOVER OVERLAY */}
                             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 backdrop-blur-sm">
                                 {track.url ? (
                                     <>
-                                        <button onClick={() => loadTrack(track, 'A')} className="px-4 py-2 bg-emerald-500 text-black text-xs font-bold rounded-full hover:scale-105 hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/20">LOAD A</button>
-                                        <button onClick={() => loadTrack(track, 'B')} className="px-4 py-2 bg-zinc-200 text-black text-xs font-bold rounded-full hover:scale-105 hover:bg-white transition-all shadow-lg">LOAD B</button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleLoadToDeck('A', track); }}
+                                            className="px-4 py-2 bg-yellow-400 text-black text-xs font-bold rounded-full hover:scale-105 hover:bg-yellow-300 transition-all shadow-lg"
+                                        >
+                                            LOAD A
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleLoadToDeck('B', track); }}
+                                            className="px-4 py-2 bg-zinc-200 text-black text-xs font-bold rounded-full hover:scale-105 hover:bg-white transition-all shadow-lg"
+                                        >
+                                            LOAD B
+                                        </button>
                                     </>
                                 ) : (
                                     <span className="text-[10px] text-red-400 font-mono bg-red-900/50 px-2 py-1 rounded">DRM LOCKED</span>
@@ -78,9 +122,25 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({ isSearchMode = false }) 
                             <h3 className="font-bold text-zinc-200 truncate text-sm mb-1">{track.title || "Unknown Title"}</h3>
                             <p className="text-xs text-zinc-500 truncate font-mono">{track.artist || "Unknown Artist"}</p>
                         </div>
+
+                        {/* Right-click hint */}
+                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="text-[8px] text-zinc-500 bg-zinc-900/80 px-1.5 py-0.5 rounded">Right-click for options</span>
+                        </div>
                     </div>
                 ))}
             </div>
+
+            {/* CONTEXT MENU */}
+            {menuState.isOpen && menuState.track && (
+                <TrackContextMenu
+                    x={menuState.x}
+                    y={menuState.y}
+                    track={menuState.track}
+                    onLoadDeck={handleLoadToDeck}
+                    onClose={closeMenu}
+                />
+            )}
         </div>
     );
 };
