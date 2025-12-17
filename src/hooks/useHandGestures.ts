@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { djEngine } from '../audio/DJEngine'
 
+// Persistence threshold - gesture must be detected for N consecutive frames
+const GESTURE_PERSISTENCE_THRESHOLD = 5
+
 export const useHandGestures = () => {
     const [enabled, setEnabled] = useState(false)
     const [gestureState, setGestureState] = useState<'Play' | 'Pause' | 'None'>('None')
@@ -11,9 +14,17 @@ export const useHandGestures = () => {
     const loopRef = useRef<number>()
     const lastGestureTime = useRef(0)
 
+    // Persistence buffer - tracks consecutive frame detections
+    const fistFrameCount = useRef(0)
+    const palmFrameCount = useRef(0)
+    const lastDetectedGesture = useRef<'fist' | 'palm' | 'none'>('none')
+
     useEffect(() => {
         if (!enabled) {
             stopLoop()
+            // Reset counters when disabled
+            fistFrameCount.current = 0
+            palmFrameCount.current = 0
             return
         }
 
@@ -22,8 +33,11 @@ export const useHandGestures = () => {
 
         workerRef.current.onmessage = (e) => {
             if (e.data.type === 'gesture') {
-                const { isFist } = e.data.data
-                handleGesture(isFist)
+                const { isFist, confidence } = e.data.data
+                // Only process if confidence is high enough
+                if (confidence === undefined || confidence > 0.7) {
+                    handleGestureFrame(isFist)
+                }
             }
         }
 
@@ -61,10 +75,6 @@ export const useHandGestures = () => {
         const ctx = canvasRef.current.getContext('2d')
         if (ctx) {
             ctx.drawImage(videoRef.current, 0, 0, 320, 240)
-            const imageData = ctx.getImageData(0, 0, 320, 240)
-            // Send to worker
-            // We can't send ImageData directly efficiently without Transferable, but for hackathon simple postMessage is ok
-            // Or better, ImageBitmap.
             createImageBitmap(videoRef.current).then(bmp => {
                 workerRef.current?.postMessage({ image: bmp, width: 320, height: 240 }, [bmp])
             })
@@ -76,33 +86,47 @@ export const useHandGestures = () => {
         }, 100)
     }
 
-    const handleGesture = (isFist: boolean) => {
-        const now = Date.now()
-        if (now - lastGestureTime.current < 1500) return // Cooldown 1.5s to prevent accidental triggers
-
-        // Logic: Fist = Play, Open (Not Fist) = Pause? 
-        // Or Toggle? 
-        // Prompt: "Open Palm (Pause) and Fist (Play)"
-
+    // Handle each frame detection - accumulates persistence buffer
+    const handleGestureFrame = (isFist: boolean) => {
         if (isFist) {
-            console.log("Gesture: FIST -> PLAY")
-            djEngine.play('A') // Default Deck A for simple control
-            setGestureState('Play')
-            lastGestureTime.current = now
+            fistFrameCount.current++
+            palmFrameCount.current = 0 // Reset opposite counter
+
+            // Trigger action only after persistence threshold met
+            if (fistFrameCount.current === GESTURE_PERSISTENCE_THRESHOLD) {
+                triggerGestureAction('fist')
+            }
         } else {
-            // Open Palm
-            // Need to be careful not to trigger on random noise. 
-            // Ideally we check confidence or sustain.
-            // For now, simple Mapping.
-            console.log("Gesture: PALM -> PAUSE")
-            djEngine.pause('A')
-            setGestureState('Pause')
-            lastGestureTime.current = now
+            palmFrameCount.current++
+            fistFrameCount.current = 0 // Reset opposite counter
+
+            if (palmFrameCount.current === GESTURE_PERSISTENCE_THRESHOLD) {
+                triggerGestureAction('palm')
+            }
         }
     }
 
-    // Hidden Video/Canvas elements for the DOM
-    // Hooks can't return JSX easily unless they are components or we use a Portal. 
-    // We'll return refs and let consumer render them hidden.
+    // Actually trigger the action after persistence confirmed
+    const triggerGestureAction = (gesture: 'fist' | 'palm') => {
+        const now = Date.now()
+        if (now - lastGestureTime.current < 1500) return // Cooldown 1.5s
+
+        // Don't re-trigger same gesture
+        if (gesture === lastDetectedGesture.current) return
+
+        lastDetectedGesture.current = gesture
+        lastGestureTime.current = now
+
+        if (gesture === 'fist') {
+            console.log("Gesture: FIST -> PLAY (Confirmed after 5 frames)")
+            djEngine.play('A')
+            setGestureState('Play')
+        } else {
+            console.log("Gesture: PALM -> PAUSE (Confirmed after 5 frames)")
+            djEngine.pause('A')
+            setGestureState('Pause')
+        }
+    }
+
     return { enabled, setEnabled, gestureState, videoRef, canvasRef }
 }

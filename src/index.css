@@ -23,9 +23,41 @@ body {
     background: var(--zen-dark);
     color: white;
     font-family: 'Inter', system-ui, sans-serif;
-    /* Geist Sans equivalent */
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     overflow: hidden;
+    /* Performance: Hardware acceleration */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+/* Global smooth transitions for interactive elements */
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+[role="button"] {
+    transition: transform 0.15s ease-out, opacity 0.15s ease-out, background-color 0.2s ease;
+    will-change: transform;
+}
+
+button:active,
+[role="button"]:active {
+    transform: scale(0.98);
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }
 
 h1,
@@ -52,23 +84,65 @@ button {
     transform: scale(1.05);
 }
 
-/* Custom Utilities */
+/* Custom Utilities - Optimized Glass Panel */
 .glass-panel {
     @apply bg-white/5 backdrop-blur-3xl border border-white/10;
+    /* Performance: GPU layer + containment */
+    transform: translateZ(0);
+    will-change: opacity, transform;
+    contain: layout style paint;
 }
 
-/* Scrollbar Hide */
+/* Custom Scrollbar - Yellow/Black Theme */
 ::-webkit-scrollbar {
-    display: none;
+    width: 8px;
+    height: 8px;
 }
 
-.no-scrollbar::-webkit-scrollbar {
-    display: none;
+::-webkit-scrollbar-track {
+    background: #000;
+    border-radius: 4px;
 }
 
-.no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #FFFF00 0%, #FFD700 100%);
+    border-radius: 4px;
+    border: 1px solid #333;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #FFD700 0%, #FFA500 100%);
+}
+
+/* Firefox scrollbar */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #FFFF00 #000;
+}
+
+/* Library container - prevent play bar overlap */
+.library-container,
+.track-list,
+.song-list {
+    padding-bottom: 120px;
+    /* Space for fixed play bar */
+}
+
+/* Genre cards - ensure clickability */
+.genre-card,
+.browse-card,
+[data-genre] {
+    cursor: pointer;
+    pointer-events: auto;
+    position: relative;
+    z-index: 1;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.genre-card:hover,
+.browse-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 8px 32px rgba(255, 255, 0, 0.15);
 }
 
 /* --- PRO DJ SLIDERS (Hardware Style) --- */

@@ -18,6 +18,11 @@ export class DJEngineClass {
     crossfade: Tone.CrossFade
     master: Tone.Volume
 
+    // VU Meters
+    meterA: Tone.Meter
+    meterB: Tone.Meter
+    masterMeter: Tone.Meter
+
     // Ghost Deck (Smart Buffer)
     recorder: Tone.Recorder
     ghostPlayer: Tone.Player
@@ -39,6 +44,11 @@ export class DJEngineClass {
         this.crossfade = new Tone.CrossFade(0.5)
         this.master = new Tone.Volume(0).toDestination()
 
+        // VU Meters for level monitoring
+        this.meterA = new Tone.Meter(0.8) // smoothing factor
+        this.meterB = new Tone.Meter(0.8)
+        this.masterMeter = new Tone.Meter(0.8)
+
         // Ghost Deck Init
         this.recorder = new Tone.Recorder()
         this.ghostPlayer = new Tone.Player()
@@ -55,7 +65,12 @@ export class DJEngineClass {
         this.stripA.solo.connect(this.crossfade.a)
         this.stripB.solo.connect(this.crossfade.b)
 
+        // Connect meters to strips for level monitoring
+        this.stripA.solo.connect(this.meterA)
+        this.stripB.solo.connect(this.meterB)
+
         this.crossfade.connect(this.master)
+        this.master.connect(this.masterMeter)
     }
 
     async init() {
@@ -403,6 +418,29 @@ export class DJEngineClass {
         strip.setVolume(100) // Restore volume (assuming it was max? or store prev vol?)
         // Ideally we fade it back in or it's implicitly handled by crossfader moving away.
         console.log(`[SmartBuffer] Ghost Loop Stopped`)
+    }
+
+    // ============ VU METER READINGS ============
+
+    /**
+     * Get current meter values for VU meter animation
+     * Returns values in dB (typically -60 to 0)
+     */
+    getMeterValues(deck?: 'A' | 'B' | 'master') {
+        const getValue = (meter: Tone.Meter) => {
+            const val = meter.getValue()
+            // Tone.Meter returns number or number[] depending on channels
+            return typeof val === 'number' ? val : val[0] ?? -60
+        }
+
+        if (deck === 'A') {
+            return { left: getValue(this.meterA), right: getValue(this.meterA) }
+        } else if (deck === 'B') {
+            return { left: getValue(this.meterB), right: getValue(this.meterB) }
+        } else {
+            // Master levels
+            return { left: getValue(this.masterMeter), right: getValue(this.masterMeter) }
+        }
     }
 }
 
