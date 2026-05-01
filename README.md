@@ -1,57 +1,33 @@
-# ZenFlow
+# ZenFlow Pro 🎛️👋
 
-**Premium Audio Visualizer with Spotify/Apple Music Integration**
+![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB)
+![TailwindCSS](https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
-A beautiful desktop app featuring an Aurora Borealis visualizer, glassmorphic UI, and hand gesture controls.
+ZenFlow Pro is a next-generation DJ mixing application that allows you to control music filters, EQ, and crossfading entirely through **webcam hand gestures**. 
 
-![ZenFlow](https://i.imgur.com/placeholder.png)
+![Demo GIF](https://via.placeholder.com/800x400.png?text=Insert+Demo+GIF+Here)
 
-## Features
+## ✨ Features
+* **Computer Vision Mixing:** Uses MediaPipe / TensorFlow.js to track hand landmarks in real-time.
+* **Gesture Mapping:** Map physical gestures (e.g., pinching, twisting, swiping) to DJ parameters like Low-Pass Filters, Reverb, and Deck Crossfading.
+* **Dual Channel Audio Engine:** Professional dual-deck architecture built with Tone.js/Web Audio API.
+* **Bold Zen Design System:** A stunning glassmorphic UI with dynamic audio visualizers built with React and Tailwind CSS v4.
 
-- 🌌 **Aurora Visualizer** - Shader-based fluid animation reactive to audio
-- 🎵 **Spotify/Apple Music** - Real-time track info, album art, and controls
-- 🎚️ **Seek Control** - Click or drag progress bar to seek
-- ✋ **Hand Gestures** - MediaPipe powered gesture control
-- 🎨 **Dynamic Colors** - UI recolors based on current track
-- 💎 **Glassmorphic Design** - Premium frosted glass UI
+## 🏗️ Architecture
+1. **The Vision Engine:** Continuously processes webcam frames, extracting XYZ coordinates of hand landmarks at 60fps.
+2. **The Audio Graph:** Audio nodes (Gain, BiquadFilter, Convolver) are dynamically patched together.
+3. **The State Bridge:** A reactive state manager takes the normalized `[0.0, 1.0]` coordinates from the Vision Engine and maps them directly to the `AudioParam` values in the Audio Graph.
 
-## Hand Gestures
+## 🚀 Getting Started
 
-| Gesture | Action |
-|---------|--------|
-| ✋ Open Palm | Pause |
-| ✊ Closed Fist | Play |
-| 👋 Swipe Left/Right | Prev/Next |
-| ☝️ Hand Up | Volume Up |
-| 👇 Hand Down | Volume Down |
+### Prerequisites
+* Node.js 18+
 
-## Quick Start
-
+### Installation
 ```bash
-# Install dependencies
+git clone https://github.com/Anuj-9009/zenflow-pro.git
+cd zenflow-pro
 npm install
-
-# Run in development
 npm run dev
-
-# Build for production
-npm run build
 ```
-
-## Tech Stack
-
-- **Frontend**: React, Three.js (React Three Fiber), Zustand
-- **Desktop**: Electron
-- **Shaders**: GLSL (Simplex Noise, FBM)
-- **Gestures**: MediaPipe Hands
-- **Build**: Vite, TypeScript
-
-## Requirements
-
-- Node.js 18+
-- macOS (for Spotify/Apple Music integration via AppleScript)
-- Spotify or Apple Music running
-
-## License
-
-MIT
