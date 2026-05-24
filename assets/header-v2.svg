@@ -30,6 +30,18 @@
   <circle class="glow-blob" cx="190" cy="80" r="75" fill="#007ACC" />
   <circle class="glow-blob" cx="610" cy="90" r="65" fill="#38B2AC" style="animation-delay: -3.5s;" />
   
+  <!-- Custom MediaPipe Vision Gesture Skeleton Wireframe -->
+    <g stroke="rgba(56,178,172,0.15)" stroke-width="1.5" fill="none">
+      <circle cx="80" cy="50" r="4" fill="#38B2AC" />
+      <circle cx="110" cy="70" r="4" fill="#007ACC" />
+      <circle cx="95" cy="110" r="4" fill="#38B2AC" />
+      <circle cx="60" cy="90" r="4" fill="#007ACC" />
+      <path d="M 80 50 L 110 70 L 95 110 L 60 90 Z" />
+      <path d="M 720 50 L 750 70 L 735 110 L 700 90 Z" transform="translate(-20, 0)" />
+      <circle cx="700" cy="50" r="4" fill="#38B2AC" />
+      <circle cx="730" cy="70" r="4" fill="#007ACC" />
+    </g>
+  
   <!-- Title Text -->
   <text x="50%" y="78" dominant-baseline="middle" text-anchor="middle" class="text-title">Z E N F L O W  P R O</text>
   <text x="50%" y="122" dominant-baseline="middle" text-anchor="middle" class="text-subtitle">WEB-CAM GESTURE CONTROLLED DJ SYSTEM</text>
