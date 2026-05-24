@@ -3,7 +3,7 @@
   <br />
   <img src="assets/header-v2.svg" width="100%" alt="banner">
   <p>
-    <img src="https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white" alt="typescript %23007ACC.svg" /> <img src="https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB" alt="react %2320232a.svg" /> <img src="https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="tailwindcss %2338B2AC.svg" />
+    <img src="https://img.shields.io/badge/Status-In%20Development-orange?style=for-the-badge" alt="Status In Development" /> <img src="https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white" alt="typescript %23007ACC.svg" /> <img src="https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB" alt="react %2320232a.svg" /> <img src="https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="tailwindcss %2338B2AC.svg" />
   </p>
   <p>
     ZenFlow Pro is a next-generation DJ mixing application that allows you to control music filters, EQ, and crossfading entirely through <b>webcam hand gestures<b>.
@@ -11,6 +11,8 @@
 </div>
 
 <hr style="border: 0; height: 1px; background-image: linear-gradient(to right, rgba(56, 178, 172, 0), rgba(56, 178, 172, 0.4), rgba(56, 178, 172, 0));" />
+
+> ⚠️ **DEVELOPMENTAL BUILD** — This project is in active development and may not work properly. The webcam hand-landmark tracking and Tone.js audio mapping are currently running in an experimental sandbox.
 
 ![Demo GIF](https://via.placeholder.com/800x400.png?text=Insert+Demo+GIF+Here)
 
